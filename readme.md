@@ -145,8 +145,7 @@ password = "your_password"
 database = "agenthub"
 
 [redisConfig]
-host = "127.0.0.1"
-port = "6379"
+addr = "ip:port"
 password = ""
 db = 0
 
