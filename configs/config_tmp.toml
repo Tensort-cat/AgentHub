@@ -1,0 +1,31 @@
+[mainConfig]
+appName = "AgentHub"
+host = "你的服务器IP地址" # 替换为你的服务器IP地址
+port = 8000
+
+[mysqlConfig]
+host = "你的Mysql的IP地址" # 替换为你的服务器IP地址
+port = 3306 # 不一定一样，看你自己的端口
+user = "你的数据库用户名" # 替换为你的数据库用户名
+password = "你的数据库密码" # 替换为你的数据库密码
+database = "agenthub"
+
+[redisConfig]
+addr = "ip:port"
+password = "你的Redis密码" # 替换为你的Redis密码
+db = 0
+dimension = 2048
+
+[logConfig]
+logPath = "./logs/app.log"
+
+[staticSrcConfig]
+staticAvatarPath = "../static/avatars" # 存储用户头像的路径
+staticFilePath = "../static/files" # 存储用户文件的路径
+
+[emailConfig] # 用于发送验证码 (以qq邮箱为例)
+host = "smtp.qq.com"
+port = 465
+username = "你的qq邮箱地址" # 替换为你的邮箱地址
+password = "你的邮箱授权码" # 替换为你的邮箱授权码
+from = "你的qq邮箱地址" # 替换为你的邮箱地址

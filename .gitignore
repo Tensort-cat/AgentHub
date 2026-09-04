@@ -1,0 +1,11 @@
+﻿# 本地配置文件，不上传到 GitHub
+configs/config.toml
+
+# 本地上传的头像和文件，不上传到 GitHub
+static/avatars/**
+static/files/**
+
+# 保留配置模板，作为示例文件
+!configs/config_tmp.toml
+
+prototype
