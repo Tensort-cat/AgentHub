@@ -218,6 +218,69 @@ http://localhost:8000
 - 作为 Go 后端开发练手项目
 - 作为个人作品展示或简历项目的基础版本
 
+## **Docker 部署（后端 + MySQL + Redis）**
+
+下面给出一个一键用 Docker Compose 在本地启动整个后端服务（包含 MySQL、Redis）的说明，适合初学者演练。请在推到 GitHub 前确认本仓库已包含 `Dockerfile` 和 `docker-compose.yml`。
+
+**前置条件**
+- 已安装并运行 `Docker Desktop`（包含 `docker compose`）。
+- 本机 8000/3306/6379 端口没有冲突，或你在 `docker-compose.yml` 中修改过映射。
+
+**关键文件**
+- `Dockerfile`：后端镜像构建脚本。
+- `docker-compose.yml`：编排文件（包含 `mysql`、`redis`、`agenthub` 服务）。
+- `configs/config.toml`：服务运行时配置（容器内会读取此文件或通过 `AGENTHUB_CONFIG_PATH` 指定路径）。
+- `tables.sql`：数据库初始化脚本。
+
+**快速启动（Windows PowerShell）**
+1. 克隆并进入项目：
+```
+git clone <repo-url> AgentHub
+cd AgentHub
+```
+2. 可选：检查/修改 `configs/config.toml`，至少确认 MySQL 与 Redis 的地址/密码与 `docker-compose.yml` 中一致（默认 `mysql` 与 `redis` 为容器名）。
+3. 构建并启动全部服务：
+```
+docker compose up --build -d
+```
+4. 初始化数据库（PowerShell 使用管道代替 `<` 重定向）：
+```
+docker exec agenthub-mysql mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS agenthub;"
+Get-Content .\tables.sql | docker exec -i agenthub-mysql mysql -uroot -p123456 agenthub
+```
+5. 查看后端日志确认：
+```
+docker logs -f agenthub-app
+```
+
+**关于 Redis**
+- 项目使用到 Redis Search（FT.* 命令）与向量索引功能，普通 `redis:alpine` 镜像**不包含**这些模块。请务必在 `docker-compose.yml` 中使用 `redis/redis-stack`（或带有 redisearch 的 redis-stack 具体版本），例如：
+  `image: redis/redis-stack:7.4`
+- 启动后可用下面命令验证（需替换密码）：
+```
+docker exec -it agenthub-redis redis-cli -a 123456 COMMAND INFO FT.INFO
+docker exec -it agenthub-redis redis-cli -a 123456 MODULE LIST
+```
+
+**常见问题与排查**
+- 如果容器报 `ERR unknown command 'FT.INFO'`：说明 Redis 没有加载 Search 模块，可能是使用了错误镜像或没有清理旧数据卷。解决办法：
+  1. `docker compose down -v`
+  2. 确保 `docker-compose.yml` 中 `image: redis/redis-stack:7.4`
+  3. `docker compose up -d redis`
+- PowerShell 中不能直接用 `<` 做输入重定向，请使用 `Get-Content ... | docker exec -i ...` 导入 SQL 文件。
+
+**停止与清理**
+- 停止并删除容器（保留数据卷）：
+```
+docker compose down
+```
+- 停止并删除包含卷的所有资源（会清除 MySQL/Redis 数据）：
+```
+docker compose down -v
+```
+
+如果你希望我把 `docker-compose.yml` 改为使用 `.env` 管理密码、或把 RabbitMQ 等额外服务加入到编排中，我可以一并帮你更新并测试。 
+
 ## License
 
 本项目目前未声明正式 License，适用于学习、研究和个人开发场景。

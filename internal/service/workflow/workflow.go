@@ -5,7 +5,6 @@ import (
 	"AgentHub/internal/dto/response"
 	"AgentHub/internal/model"
 	"AgentHub/pkg/constant"
-	message_enum "AgentHub/pkg/enum/message"
 	workflow_enum "AgentHub/pkg/enum/workflow"
 	"AgentHub/pkg/util"
 	"AgentHub/pkg/zlog"
@@ -15,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/eino/compose"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -293,24 +292,12 @@ func Run(
 		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
 	}
 
-	defer Sweep(session.ID) // 清理资源
+	defer Sweep(session.ID)
 
-	// 4. 保存用户消息
-	if err := saveMessage(model.Message{
-		BaseModel: model.BaseModel{
-			ID:        util.GenID(),
-			CreatedAt: time.Now(),
-		},
-		SessionID: session.ID,
-		Type:      message_enum.MessageTypeUser,
-		Content:   input,
-	}); err != nil {
-		zlog.Error(err.Error())
-	}
-
-	// 5. 创建 Graph
+	// 4. 创建 Graph
 	graph, err := BuildGraph(
 		ctx,
+		input,
 		nodes,
 		edges,
 		session.ID,
@@ -319,43 +306,36 @@ func Run(
 		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
 	}
 
-	// 6. 编译
+	// 5. 编译
 	runner, err := graph.Compile(ctx)
 	if err != nil {
 		zlog.Error(err.Error())
 		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
 	}
 
-	// 7. 执行
-	result, err := runner.Invoke(
-		ctx,
-		RuntimeInput{
-			msg: schema.UserMessage(input),
-		},
-	)
+	// 6. 执行
+	result, err := runner.Invoke(ctx, input)
 	if err != nil {
 		zlog.Error(err.Error())
 		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
 	}
 
-	// 8. 保存最终 Assistant Message
-	if err := saveMessage(model.Message{
-		BaseModel: model.BaseModel{
-			ID:        util.GenID(),
-			CreatedAt: time.Now(),
-		},
-		SessionID: session.ID,
-		Type:      message_enum.MessageTypeAssistant,
-		Content:   result.msg.Content,
-	}); err != nil {
+	// 7. 保存本次运行产生的所有消息
+	err = compose.ProcessState(ctx, func(
+		_ context.Context,
+		state *RuntimeState,
+	) error {
+		return state.SaveMsg2DB()
+	})
+	if err != nil {
 		zlog.Error(err.Error())
-		return constant.InternalServerError, constant.Msg(err.Error()), response.WorkflowResult{}
+		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
 	}
 
-	// 9. 返回
+	// 8. 返回
 	return constant.Success, constant.Ok, response.WorkflowResult{
 		SessionID: session.ID,
-		Content:   result.msg.Content,
+		Content:   result,
 	}
 }
 
@@ -431,8 +411,8 @@ func createSession(wfID int64, input string) model.Session {
 	return session
 }
 
-func saveMessage(msg model.Message) error {
-	return dao.DB.Create(&msg).Error
+func saveMessages(msgs []*model.Message) error {
+	return dao.DB.Create(msgs).Error
 }
 
 // ======================== Node 相关 =========================================

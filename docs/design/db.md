@@ -66,6 +66,7 @@ CREATE TABLE sessions (
     id BIGINT PRIMARY KEY,
     workflow_id BIGINT NOT NULL,
     title VARCHAR(100),
+    status TINYINT NOT NULL,
     created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
     deleted_at DATETIME(3),
     INDEX idx_workflow(workflow_id)

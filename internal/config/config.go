@@ -2,6 +2,8 @@ package config
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 )
@@ -57,7 +59,24 @@ var Cfg *Config
 
 func InitConfig() error {
 	cfg := new(Config)
-	if _, err := toml.DecodeFile("D:\\dev_soft\\AgentHub\\configs\\config.toml", cfg); err != nil {
+	configPath := os.Getenv("AGENTHUB_CONFIG_PATH")
+	if configPath == "" {
+		candidates := []string{
+			filepath.Join(".", "configs", "config.toml"),
+			filepath.Join(".", "config.toml"),
+			filepath.Join("D:\\", "dev_soft", "AgentHub", "configs", "config.toml"),
+		}
+		for _, p := range candidates {
+			if _, err := os.Stat(p); err == nil {
+				configPath = p
+				break
+			}
+		}
+	}
+	if configPath == "" {
+		configPath = filepath.Join(".", "configs", "config.toml")
+	}
+	if _, err := toml.DecodeFile(configPath, cfg); err != nil {
 		log.Fatal(err.Error())
 		return err
 	}

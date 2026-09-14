@@ -21,16 +21,13 @@ type ChatTemplateConfig struct {
 }
 
 type BranchConfig struct {
-	// 第一版具体字段根据你前端最终设计确定。
-	//
-	// 例如：
-	// Conditions []BranchCondition `json:"conditions"`
+	Conditions map[string]string
 }
 
-type BranchCondition struct {
-	Name       string `json:"name"`
-	Expression string `json:"expression"`
-}
+// type BranchRule struct {
+// 	Value    string `json:"value"`
+// 	TargetID int64  `json:"target_id"`
+// }
 
 type ToolConfig struct {
 	ToolIDs []int64 `json:"tool_ids"`
