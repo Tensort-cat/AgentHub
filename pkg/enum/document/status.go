@@ -3,7 +3,9 @@ package document_enum
 type DocStatus int8
 
 const (
-	Uploading DocStatus = iota + 1
+	Pending DocStatus = iota + 1
+	Parsing
+	Indexing
 	Success
 	Error
 )

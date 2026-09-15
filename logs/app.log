@@ -150,3 +150,5 @@
 {"level":"info","ts":"2026-09-04T20:56:22.528+0800","msg":"正在创建 Redis 向量索引...","index":"kb_vector_idx","prefix":"rag:kb:","dimension":2048,"func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":87}
 {"level":"info","ts":"2026-09-04T20:56:22.554+0800","msg":"Redis 向量索引创建成功","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":123}
 {"level":"info","ts":"2026-09-04T20:56:22.554+0800","msg":"backend port","port":":8000","func":"main.main","file":"D:/dev_soft/AgentHub/cmd/main.go","line":39}
+{"level":"debug","ts":"2026-09-14T22:26:13.124+0800","msg":"这是测试","func":"test.TestLogger","file":"d:/dev_soft/AgentHub/test/config_test.go","line":19}
+{"level":"debug","ts":"2026-09-14T22:27:03.840+0800","msg":"这是测试","func":"test.TestLogger","file":"d:/dev_soft/AgentHub/test/config_test.go","line":19}

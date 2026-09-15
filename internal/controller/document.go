@@ -13,6 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var basePath = config.Cfg.StaticSrcConfig.StaticFilePath
+
 func DocUpload(c *gin.Context) {
 	kbIDStr := c.PostForm("knowledge_base_id")
 	kbID, err := strconv.ParseInt(kbIDStr, 10, 64)
@@ -70,7 +72,7 @@ func DocDownload(c *gin.Context) {
 
 	// 4. 构造文件路径
 	filePath := filepath.Join(
-		config.Cfg.StaticSrcConfig.StaticFilePath,
+		basePath,
 		strconv.FormatInt(doc.KnowledgeBaseID, 10),
 		strconv.FormatInt(doc.ID, 10),
 		doc.Name,

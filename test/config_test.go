@@ -2,6 +2,7 @@ package test
 
 import (
 	"AgentHub/internal/config"
+	"AgentHub/pkg/zlog"
 	"testing"
 )
 
@@ -12,4 +13,8 @@ func TestConfig(t *testing.T) {
 
 	cfg := config.Cfg
 	t.Log(cfg)
+}
+
+func TestLogger(t *testing.T) {
+	zlog.Debug("这是测试")
 }

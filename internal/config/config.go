@@ -33,6 +33,13 @@ type LogConfig struct {
 	LogPath string `toml:"logPath"`
 }
 
+type RabbitmqConfig struct {
+	Username string `toml:"username"`
+	Password string `toml:"password"`
+	Host     string `toml:"host"`
+	Port     int    `toml:"prot"`
+}
+
 type EmailConfig struct {
 	Host     string `toml:"host"`
 	Port     int    `toml:"port"`
@@ -52,6 +59,7 @@ type Config struct {
 	RedisConfig     RedisConfig     `toml:"redisConfig"`
 	LogConfig       LogConfig       `toml:"logConfig"`
 	EmailConfig     EmailConfig     `toml:"emailConfig"`
+	RabbitmqConfig  RabbitmqConfig  `toml:"rabbitmqConfig"`
 	StaticSrcConfig StaticSrcConfig `toml:"staticSrcConfig"`
 }
 

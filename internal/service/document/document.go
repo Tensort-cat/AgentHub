@@ -18,6 +18,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// ------------------------
+// TODO: mq 相关, DocUpload应该要完全重构一下
+// ------------------------
 func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.Msg, response.DocUploadResp) {
 	/*
 		1. 先生成文档的元数据，把文件保存到指定目录
@@ -25,7 +28,6 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 		3. 文档元数据存储到 Mysql 中
 		4. 返回数据给前端
 	*/
-
 	// 获取文件后缀
 	fileExt := filepath.Ext(file.Filename)
 	doc := model.Document{
@@ -36,10 +38,21 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 		KnowledgeBaseID: kbID,
 		Name:            file.Filename,
 		Type:            document_enum.DocType(fileExt),
-		Status:          document_enum.Uploading,
+		Status:          document_enum.Pending,
 		Size:            file.Size,
 	}
+	// 将 pending 状态的 doc 先入库
+	if err := dao.DB.Create(&doc).Error; err != nil {
+		zlog.Error(err.Error())
 
+		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
+	}
+
+	// 更新文档状态为 parsing
+	if err := UpdateDocStatus(doc.ID, document_enum.Parsing); err != nil {
+		zlog.Error(err.Error())
+		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
+	}
 	// 将文件存储到指定目录
 	kbIDStr := fmt.Sprint(kbID)
 	docIDStr := fmt.Sprint(doc.ID)
@@ -48,27 +61,44 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 	src, err := file.Open()
 	if err != nil {
 		zlog.Error("打开文件失败", zap.Error(err))
+		if err := UpdateDocStatus(doc.ID, document_enum.Error); err != nil {
+			zlog.Error(err.Error())
+		}
 		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
 	}
 	defer src.Close()
 	dst, err := os.Create(path)
 	if err != nil {
 		zlog.Error("创建文件失败", zap.Error(err))
+		if err := UpdateDocStatus(doc.ID, document_enum.Error); err != nil {
+			zlog.Error(err.Error())
+		}
 		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
 	}
 
 	if _, err := io.Copy(dst, src); err != nil {
 		zlog.Error("拷贝文件失败", zap.Error(err))
+		if err := UpdateDocStatus(doc.ID, document_enum.Error); err != nil {
+			zlog.Error(err.Error())
+		}
 		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
 	}
 
 	if err := dst.Close(); err != nil {
 		zlog.Error("关闭文件失败", zap.Error(err))
+		if err := UpdateDocStatus(doc.ID, document_enum.Error); err != nil {
+			zlog.Error(err.Error())
+		}
 		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
 	}
 
 	zlog.Info("文件存储成功")
 
+	// 更新状态为 indexing
+	if err := UpdateDocStatus(doc.ID, document_enum.Indexing); err != nil {
+		zlog.Error(err.Error())
+		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
+	}
 	chunkNum, err := dao.IndexFile(path)
 	if err != nil {
 		zlog.Error("文件存储到 Redis 出错", zap.Error(err))
@@ -93,11 +123,16 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 			)
 		}
 
+		// 更新状态为 Error
+		if err := UpdateDocStatus(doc.ID, document_enum.Error); err != nil {
+			zlog.Error(err.Error())
+		}
+
 		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
 	}
 	doc.ChunkNum = chunkNum
-
-	res := dao.DB.Create(&doc)
+	doc.Status = document_enum.Success
+	res := dao.DB.Save(&doc)
 	if res.Error != nil {
 		zlog.Error(
 			"文件元数据存储到 MySQL 出错",
@@ -123,6 +158,10 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 			)
 		}
 
+		if err := UpdateDocStatus(doc.ID, document_enum.Error); err != nil {
+			zlog.Error(err.Error())
+		}
+
 		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
 	}
 
@@ -133,4 +172,11 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 		Size:   doc.Size,
 		Status: doc.Status,
 	}
+}
+
+func UpdateDocStatus(id int64, status document_enum.DocStatus) error {
+	return dao.DB.
+		Model(&model.Document{}).
+		Where("id = ?", id).
+		Update("status", status).Error
 }
