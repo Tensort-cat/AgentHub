@@ -8,7 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/client"
 )
 
-// 用于管理一次工作流运行产生的 MCP Client
+// 用于管理每一次工作流运行产生的 MCP Client
 type MCPCliManager struct {
 	clis map[int64][]*client.Client
 	mu   sync.Mutex

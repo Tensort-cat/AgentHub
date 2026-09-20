@@ -73,7 +73,7 @@ func BuildGraph(
 		endpoints[node.ID] = endpoint
 	}
 
-	// 2. 添加 Branch
+	// 2. 添加 Branch (分支节点在 eino 里比较特殊，单独用一个逻辑)
 	for _, node := range nodes {
 		if node.Type != workflow_enum.Branch {
 			continue
@@ -270,6 +270,7 @@ func addChatModelNode(
 			infos = append(infos, info)
 		}
 
+		// 告诉模型能够调用的工具信息
 		cm, err = cm.WithTools(infos)
 		if err != nil {
 			return nodeEndpoint{}, err
@@ -298,13 +299,12 @@ func addChatModelNode(
 			return input, nil
 		}
 
+		// 把系统提示词放第一个
 		msgs := make([]*schema.Message, 0, len(input)+1)
-
 		msgs = append(
 			msgs,
 			schema.SystemMessage(cfg.SystemPrompt),
 		)
-
 		msgs = append(msgs, input...)
 
 		return msgs, nil
@@ -616,6 +616,7 @@ func getTools(
 			return nil, err
 		}
 
+		// 登记 MCP Client
 		GetMcpCliManager().Login(sessionID, cli)
 
 		mcpTools, err := mcp.GetTools(ctx, &mcp.Config{

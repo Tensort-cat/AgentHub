@@ -292,6 +292,7 @@ func Run(
 		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
 	}
 
+	// 结束后清理现场
 	defer Sweep(session.ID)
 
 	// 4. 创建 Graph

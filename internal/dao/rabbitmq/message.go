@@ -1,23 +1,43 @@
 package rabbitmq
 
-import "time"
-
-const (
-	TaskTypeParse = "document.parse"
-	TaskTypeIndex = "document.index"
+import (
+    "fmt"
+    "time"
 )
 
-type DocumentMessage struct {
-	TaskID string `json:"task_id"`
-	DocID  int64  `json:"doc_id"`
-	KbID   int64  `json:"kb_id"`
+const (
+    QueueWorkflowRun    = "workflow_run_queue"
+    QueueWorkflowResult = "workflow_result_queue"
+    TaskStatusSuccess   = "success"
+    TaskStatusFailed    = "failed"
+)
 
-	// 文件已经在 HTTP 请求阶段保存到服务器
-	FilePath string `json:"file_path"`
-	FileName string `json:"file_name"`
+type WorkflowRunTask struct {
+    TaskID     string    `json:"task_id"`
+    WorkflowID int64     `json:"workflow_id"`
+    UserID     int64     `json:"user_id"`
+    SessionID  int64     `json:"session_id,omitempty"`
+    Input      string    `json:"input"`
+    CreatedAt  time.Time `json:"created_at"`
+}
 
-	// 用于简单的幂等/重试控制
-	RetryCount int `json:"retry_count"`
+type WorkflowRunResult struct {
+    TaskID     string    `json:"task_id"`
+    WorkflowID int64     `json:"workflow_id"`
+    UserID     int64     `json:"user_id"`
+    SessionID  int64     `json:"session_id"`
+    Status     string    `json:"status"`
+    Result     string    `json:"result"`
+    Error      string    `json:"error,omitempty"`
+    FinishedAt time.Time `json:"finished_at"`
+}
 
-	CreatedAt time.Time `json:"created_at"`
+func NewWorkflowRunTask(workflowID int64, input string, userID int64) WorkflowRunTask {
+    return WorkflowRunTask{
+        TaskID:     fmt.Sprintf("wf-%d-%d", time.Now().UnixNano(), workflowID),
+        WorkflowID: workflowID,
+        UserID:     userID,
+        Input:      input,
+        CreatedAt:  time.Now().UTC(),
+    }
 }

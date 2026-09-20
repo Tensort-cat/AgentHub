@@ -81,3 +81,13 @@ func documentsToString(
 
 	return strings.Join(contents, "\n\n"), nil
 }
+
+// func stringToMap(
+// 	ctx context.Context,
+// 	input string,
+// ) (map[string]string, error) {
+// 	if len(input) == 0 {
+// 		return nil, nil
+// 	}
+
+// }
