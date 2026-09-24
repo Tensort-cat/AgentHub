@@ -7,5 +7,3 @@ static/files/**
 
 # 保留配置模板，作为示例文件
 !configs/config_tmp.toml
-
-prototype

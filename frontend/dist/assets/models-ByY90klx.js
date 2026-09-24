@@ -1,0 +1,1 @@
+import{a as o,n as a}from"./client-Cg2LIITQ.js";async function n(){return(await o("/models")??[]).map(t=>({...t,id:a(t.id)}))}function s(e){return o("/models",{method:"POST",json:e})}function r(e,t){return o(`/models/${e}`,{method:"PUT",json:t})}function i(e){return o(`/models/${e}`,{method:"DELETE"})}export{s as c,i as d,n as l,r as u};

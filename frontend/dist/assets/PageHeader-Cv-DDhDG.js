@@ -1,0 +1,1 @@
+import{j as e}from"./index-CkaDPur4.js";function i({title:s,description:a,actions:r}){return e.jsxs("header",{className:"page-header",children:[e.jsxs("div",{children:[e.jsx("h1",{children:s}),e.jsx("p",{children:a})]}),r?e.jsx("div",{className:"page-header__actions",children:r}):null]})}export{i as P};
