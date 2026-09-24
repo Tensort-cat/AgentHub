@@ -5,6 +5,7 @@ import (
 	"AgentHub/internal/dao"
 	"AgentHub/internal/dao/rabbitmq"
 	"AgentHub/internal/route"
+	workflowService "AgentHub/internal/service/workflow"
 	"AgentHub/pkg/zlog"
 	"context"
 	"fmt"
@@ -41,6 +42,14 @@ func main() {
 		return
 	}
 	defer rabbitmq.Close()
+	if err := rabbitmq.StartWorkflowResultConsumer(ctx, workflowService.HandleRunResult); err != nil {
+		zlog.Error("启动工作流结果消费者失败", zap.Error(err))
+		return
+	}
+	if err := rabbitmq.StartWorkflowConsumer(ctx, 3, workflowService.HandleRunTask); err != nil {
+		zlog.Error("启动工作流消费者失败", zap.Error(err))
+		return
+	}
 
 	// 开启 web 服务
 	port := fmt.Sprintf(":%d", config.Cfg.MainConfig.Port)

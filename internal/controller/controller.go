@@ -21,6 +21,12 @@ func JsonBack(ctx *gin.Context, ret constant.Code, msg constant.Msg, data any) {
 
 	case constant.Unauthorized: // 权限不足
 		httpStatus = http.StatusUnauthorized
+
+	case constant.Forbidden:
+		httpStatus = http.StatusForbidden
+
+	case constant.NotFound:
+		httpStatus = http.StatusNotFound
 	}
 
 	ctx.JSON(httpStatus, gin.H{

@@ -4,6 +4,7 @@ import (
 	"AgentHub/internal/model"
 	message_enum "AgentHub/pkg/enum/message"
 	"AgentHub/pkg/util"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,6 +20,41 @@ type RuntimeState struct {
 	Variables map[string]map[string]any
 
 	mu sync.RWMutex // 读写锁
+}
+
+// appendMessages 是 RuntimeState 消息写入的统一入口。
+func (s *RuntimeState) appendMessages(messages ...*schema.Message) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, message := range messages {
+		if message != nil {
+			s.Messages = append(s.Messages, message)
+		}
+	}
+}
+
+// snapshotMessages 返回当前有序消息历史的浅拷贝，防止调用方修改底层切片。
+func (s *RuntimeState) snapshotMessages() []*schema.Message {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return append([]*schema.Message(nil), s.Messages...)
+}
+
+// latestToolCallMessage 返回最近一条带 ToolCalls 的 AssistantMessage。
+func (s *RuntimeState) latestToolCallMessage() (*schema.Message, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, msg := range slices.Backward(s.Messages) {
+
+		if msg != nil && msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+			return msg, true
+		}
+	}
+
+	return nil, false
 }
 
 func (s *RuntimeState) SaveMsg2DB() error {

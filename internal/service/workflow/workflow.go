@@ -2,12 +2,14 @@ package service
 
 import (
 	"AgentHub/internal/dao"
+	"AgentHub/internal/dao/rabbitmq"
 	"AgentHub/internal/dto/response"
 	"AgentHub/internal/model"
 	"AgentHub/pkg/constant"
 	workflow_enum "AgentHub/pkg/enum/workflow"
 	"AgentHub/pkg/util"
 	"AgentHub/pkg/zlog"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +20,83 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
+
+// SubmitRun validates a workflow run request and puts it onto the RabbitMQ
+// work queue. It intentionally does not execute the graph in the HTTP request
+// goroutine.
+func SubmitRun(
+	ctx context.Context,
+	wfID int64,
+	input string,
+	userID int64,
+) (constant.Code, constant.Msg, response.WorkflowRunAccepted) {
+	workflow, nodes, edges, err := loadWorkflow(wfID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return constant.BadRequest, "工作流不存在", response.WorkflowRunAccepted{}
+		}
+		zlog.Error("load workflow failed: " + err.Error())
+		return constant.InternalServerError, constant.Error, response.WorkflowRunAccepted{}
+	}
+
+	if err := ValidateWorkflow(workflow, nodes, edges, userID); err != nil {
+		return constant.BadRequest, constant.Msg(err.Error()), response.WorkflowRunAccepted{}
+	}
+
+	task := rabbitmq.NewWorkflowRunTask(wfID, input, userID) // 创建任务
+	if err := saveWorkflowRunState(ctx, workflowRunState{
+		TaskID:     task.TaskID,
+		WorkflowID: task.WorkflowID,
+		UserID:     task.UserID,
+		Status:     workflow_enum.RunStatusQueued,
+	}); err != nil {
+		zlog.Error("save workflow run state failed: " + err.Error())
+		return constant.InternalServerError, constant.Error, response.WorkflowRunAccepted{}
+	}
+
+	if err := rabbitmq.PublishWorkflowRun(task); err != nil { // 将任务放入 rabbitmq
+		zlog.Error("publish workflow run task failed: " + err.Error())
+		_ = dao.RedisCli.Del(ctx, workflowRunStateKey(task.TaskID)).Err()
+		return constant.InternalServerError, constant.Error, response.WorkflowRunAccepted{}
+	}
+
+	return constant.Success, constant.Ok, response.WorkflowRunAccepted{
+		TaskID: task.TaskID,
+		Status: workflow_enum.RunStatusQueued,
+	}
+}
+
+// HandleRunTask is the RabbitMQ worker entrypoint. A workflow-level failure is
+// a completed task with a failed result, not a transport failure that should
+// cause RabbitMQ to redeliver the task forever.
+func HandleRunTask(ctx context.Context, task rabbitmq.WorkflowRunTask) error {
+	if err := saveWorkflowRunState(ctx, workflowRunState{
+		TaskID:     task.TaskID,
+		WorkflowID: task.WorkflowID,
+		UserID:     task.UserID,
+		Status:     workflow_enum.RunStatusRunning,
+	}); err != nil {
+		return err
+	}
+
+	code, msg, result := Run(ctx, task.WorkflowID, task.Input, task.UserID)
+
+	runResult := rabbitmq.WorkflowRunResult{
+		TaskID:     task.TaskID,
+		WorkflowID: task.WorkflowID,
+		UserID:     task.UserID,
+		SessionID:  result.SessionID,
+		Status:     workflow_enum.RunStatusSuccess,
+		Result:     result.Content,
+		FinishedAt: time.Now().UTC(),
+	}
+	if code != constant.Success {
+		runResult.Status = workflow_enum.RunStatusFailed
+		runResult.Error = string(msg)
+	}
+
+	return rabbitmq.PublishWorkflowResult(runResult)
+}
 
 // ================================ workflow 元数据相关 ============================================
 func Page(userID int64, page, size int) (constant.Code, constant.Msg, []response.WorkflowPageItem) {
@@ -137,10 +216,15 @@ func Detail(wfID string) (constant.Code, constant.Msg, *response.WorkflowDetailR
 
 	edgesMeta := make([]response.EdgeMetaData, len(edges))
 	for i, edge := range edges {
+		edgeConfig := json.RawMessage(edge.Config)
+		if len(edgeConfig) == 0 {
+			edgeConfig = json.RawMessage(`{}`)
+		}
 		edgesMeta[i] = response.EdgeMetaData{
 			ID:           edge.ID,
 			SourceNodeID: edge.SourceNodeID,
 			TargetNodeID: edge.TargetNodeID,
+			Config:       edgeConfig,
 		}
 	}
 	resp.Edges = edgesMeta
@@ -363,6 +447,10 @@ func ValidateWorkflow(
 		return err
 	}
 
+	if err := validateBranchTopology(nodes, edges); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -539,7 +627,16 @@ func NodeDelete(nodeID string) (constant.Code, constant.Msg) {
 }
 
 // =============================== Edge 相关 ===================================================
-func EdgeCreate(wfID int64, sourceNodeID, targetNodeID int64) (constant.Code, constant.Msg) {
+func EdgeCreate(
+	wfID int64,
+	sourceNodeID, targetNodeID int64,
+	config json.RawMessage,
+) (constant.Code, constant.Msg) {
+	trimmedConfig := bytes.TrimSpace(config)
+	if len(trimmedConfig) == 0 || bytes.Equal(trimmedConfig, []byte("null")) {
+		config = json.RawMessage(`{}`)
+	}
+
 	edge := model.WorkflowEdge{
 		BaseModel: model.BaseModel{
 			ID:        util.GenID(),
@@ -548,6 +645,7 @@ func EdgeCreate(wfID int64, sourceNodeID, targetNodeID int64) (constant.Code, co
 		WorkflowID:   wfID,
 		SourceNodeID: sourceNodeID,
 		TargetNodeID: targetNodeID,
+		Config:       datatypes.JSON(config),
 	}
 
 	res := dao.DB.Create(&edge)

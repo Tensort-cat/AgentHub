@@ -60,7 +60,7 @@ func BuildGraph(
 			continue
 		}
 
-		endpoint, err := addNode(ctx, graph, node)
+		endpoint, err := addNode(ctx, graph, node, sessionID)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"添加节点失败 node=%d type=%d: %w",
@@ -84,6 +84,7 @@ func BuildGraph(
 			graph,
 			node,
 			edges,
+			nodeMap,
 			endpoints,
 		)
 		if err != nil {
@@ -124,6 +125,7 @@ func addNode(
 	ctx context.Context,
 	graph *compose.Graph[string, string],
 	node my_model.WorkflowNode,
+	sessionID int64,
 ) (nodeEndpoint, error) {
 
 	switch node.Type {
@@ -132,10 +134,10 @@ func addNode(
 		return addChatTemplateNode(graph, node)
 
 	case workflow_enum.ChatModel:
-		return addChatModelNode(ctx, graph, node)
+		return addChatModelNode(ctx, graph, node, sessionID)
 
 	case workflow_enum.Tool:
-		return addToolNode(ctx, graph, node)
+		return addToolNode(ctx, graph, node, sessionID)
 
 	case workflow_enum.Retriever:
 		return addRetrieverNode(ctx, graph, node)
@@ -221,6 +223,7 @@ func addChatModelNode(
 	ctx context.Context,
 	graph *compose.Graph[string, string],
 	node my_model.WorkflowNode,
+	sessionID int64,
 ) (nodeEndpoint, error) {
 
 	var cfg ChatModelConfig
@@ -234,23 +237,6 @@ func addChatModelNode(
 	}
 
 	nodeKey := strconv.FormatInt(node.ID, 10)
-
-	var sessionID int64
-
-	if err := compose.ProcessState(
-		ctx,
-		func(_ context.Context, state *RuntimeState) error {
-			sessionID = state.SessionID
-
-			state.Variables[nodeKey] = map[string]any{
-				"system_prompt": cfg.SystemPrompt,
-			}
-
-			return nil
-		},
-	); err != nil {
-		return nodeEndpoint{}, err
-	}
 
 	if len(cfg.ToolIDs) > 0 {
 
@@ -311,7 +297,7 @@ func addChatModelNode(
 	}
 
 	post := func(
-		ctx context.Context,
+		_ context.Context,
 		output *schema.Message,
 		state *RuntimeState,
 	) (*schema.Message, error) {
@@ -320,16 +306,8 @@ func addChatModelNode(
 			return nil, fmt.Errorf("ChatModel 输出为空")
 		}
 
-		return output, compose.ProcessState(
-			ctx,
-			func(_ context.Context, state *RuntimeState) error {
-				state.Messages = append(
-					state.Messages,
-					output,
-				)
-				return nil
-			},
-		)
+		state.appendMessages(output)
+		return output, nil
 	}
 
 	if err := graph.AddChatModelNode(
@@ -464,22 +442,11 @@ func addToolNode(
 	ctx context.Context,
 	graph *compose.Graph[string, string],
 	node my_model.WorkflowNode,
+	sessionID int64,
 ) (nodeEndpoint, error) {
 
 	var cfg ToolConfig
 	if err := decodeNodeConfig(node.Config, &cfg); err != nil {
-		return nodeEndpoint{}, err
-	}
-
-	var sessionID int64
-
-	if err := compose.ProcessState(
-		ctx,
-		func(_ context.Context, state *RuntimeState) error {
-			sessionID = state.SessionID
-			return nil
-		},
-	); err != nil {
 		return nodeEndpoint{}, err
 	}
 
@@ -503,42 +470,44 @@ func addToolNode(
 	}
 
 	key := strconv.FormatInt(node.ID, 10)
+	inputAdapter := key + "__input"
+	componentNode := key + "__component"
+	outputAdapter := key + "__output"
 
-	post := func(
-		ctx context.Context,
-		output string,
-		state *RuntimeState,
-	) (string, error) {
-
-		return output, compose.ProcessState(
-			ctx,
-			func(_ context.Context, state *RuntimeState) error {
-
-				state.Messages = append(
-					state.Messages,
-					&schema.Message{
-						Role:    schema.Tool,
-						Content: output,
-					},
-				)
-
-				return nil
-			},
-		)
+	// string 控制信号 -> 包含 ToolCalls 的完整 AssistantMessage。
+	if err := graph.AddLambdaNode(
+		inputAdapter,
+		compose.InvokableLambda(stringToToolMessage),
+	); err != nil {
+		return nodeEndpoint{}, err
 	}
 
 	if err := graph.AddToolsNode(
-		key,
+		componentNode,
 		toolsNode,
-		compose.WithStatePostHandler(post),
 		compose.WithNodeName(node.Name),
 	); err != nil {
 		return nodeEndpoint{}, err
 	}
 
+	// ToolMessage 列表写入 RuntimeState，并转回 string 控制信号。
+	if err := graph.AddLambdaNode(
+		outputAdapter,
+		compose.InvokableLambda(toolMessagesToString),
+	); err != nil {
+		return nodeEndpoint{}, err
+	}
+
+	if err := graph.AddEdge(inputAdapter, componentNode); err != nil {
+		return nodeEndpoint{}, err
+	}
+	if err := graph.AddEdge(componentNode, outputAdapter); err != nil {
+		return nodeEndpoint{}, err
+	}
+
 	return nodeEndpoint{
-		Entry: key,
-		Exit:  key,
+		Entry: inputAdapter,
+		Exit:  outputAdapter,
 	}, nil
 }
 
@@ -639,113 +608,124 @@ func getTools(
 // ---------------------------------------------------------
 // Branch
 // ---------------------------------------------------------
+// addBranchNode 将数据库中的可视化 Branch 节点编译为 Eino GraphBranch。
+// Branch 没有真实的执行节点：它挂载在上游 endpoint 上，并把原始 string
+// 直接转发到命中规则对应的下游 endpoint。
 func addBranchNode(
-	ctx context.Context,
+	_ context.Context,
 	graph *compose.Graph[string, string],
 	node my_model.WorkflowNode,
 	edges []model.WorkflowEdge,
+	nodeMap map[int64]my_model.WorkflowNode,
 	endpoints map[int64]nodeEndpoint,
 ) (nodeEndpoint, error) {
-
 	var cfg BranchConfig
 	if err := decodeNodeConfig(node.Config, &cfg); err != nil {
 		return nodeEndpoint{}, err
 	}
+	evaluator, err := newBranchEvaluator(cfg)
+	if err != nil {
+		return nodeEndpoint{}, err
+	}
 
-	// Branch 没有真实的输入输出节点。
-	// 它挂载在自己的上游节点 Exit 上。
-	var startNode string
-
-	for _, edge := range edges {
-		if edge.TargetNodeID == node.ID {
-			source, ok := endpoints[edge.SourceNodeID]
-			if !ok {
-				return nodeEndpoint{}, fmt.Errorf(
-					"Branch 上游节点不存在: %d",
-					edge.SourceNodeID,
-				)
-			}
-
-			startNode = source.Exit
-			break
+	// 可视化的 upstream -> Branch 边只用于定位 GraphBranch 的挂载点，
+	// 不会作为普通边添加到 Eino graph。
+	var incoming *model.WorkflowEdge
+	for i := range edges {
+		if edges[i].TargetNodeID != node.ID {
+			continue
 		}
+		if incoming != nil {
+			return nodeEndpoint{}, fmt.Errorf("branch node %d has more than one incoming edge", node.ID)
+		}
+		incoming = &edges[i]
+	}
+	if incoming == nil {
+		return nodeEndpoint{}, fmt.Errorf("branch node %d has no incoming edge", node.ID)
 	}
 
-	if startNode == "" {
-		return nodeEndpoint{}, fmt.Errorf(
-			"Branch 节点没有上游节点: %d",
-			node.ID,
-		)
+	source, exists := nodeMap[incoming.SourceNodeID]
+	if !exists {
+		return nodeEndpoint{}, fmt.Errorf("branch upstream node does not exist: %d", incoming.SourceNodeID)
+	}
+	// Start/End 在 Eino 中是保留 endpoint，不存在于 endpoints 映射中。
+	startNode := compose.START
+	if source.Type != workflow_enum.Start {
+		endpoint, ok := endpoints[source.ID]
+		if !ok {
+			return nodeEndpoint{}, fmt.Errorf("branch upstream endpoint does not exist: %d", source.ID)
+		}
+		startNode = endpoint.Exit
 	}
 
-	endNodes := make(map[string]bool)
+	allowedRuleIDs := make(map[string]struct{}, len(cfg.Rules)+1)
+	for _, rule := range cfg.Rules {
+		allowedRuleIDs[rule.ID] = struct{}{}
+	}
+	allowedRuleIDs[branchDefaultRuleID] = struct{}{}
 
-	for _, targetID := range cfg.Conditions {
-
-		targetNodeID, err := strconv.ParseInt(
-			targetID,
-			10,
-			64,
-		)
-		if err != nil {
+	// targetByRule 用于运行时选择目标；endNodes 是 Eino 要求预先声明的目标白名单。
+	targetByRule := make(map[string]string, len(cfg.Rules)+1)
+	endNodes := make(map[string]bool, len(cfg.Rules)+1)
+	for _, edge := range edges {
+		if edge.SourceNodeID != node.ID {
 			continue
 		}
 
-		target, ok := endpoints[targetNodeID]
-		if !ok {
-			return nodeEndpoint{}, fmt.Errorf(
-				"Branch 目标节点不存在: %d",
-				targetNodeID,
-			)
+		var edgeCfg BranchEdgeConfig
+		if err := decodeNodeConfig(edge.Config, &edgeCfg); err != nil {
+			return nodeEndpoint{}, fmt.Errorf("branch edge %d config is invalid: %w", edge.ID, err)
+		}
+		if _, ok := allowedRuleIDs[edgeCfg.BranchRuleID]; !ok {
+			return nodeEndpoint{}, fmt.Errorf("branch edge %d references unknown rule %q", edge.ID, edgeCfg.BranchRuleID)
+		}
+		if _, duplicate := targetByRule[edgeCfg.BranchRuleID]; duplicate {
+			return nodeEndpoint{}, fmt.Errorf("branch rule %q has more than one target", edgeCfg.BranchRuleID)
 		}
 
-		endNodes[target.Entry] = true
+		target, ok := nodeMap[edge.TargetNodeID]
+		if !ok {
+			return nodeEndpoint{}, fmt.Errorf("branch target node does not exist: %d", edge.TargetNodeID)
+		}
+		targetEndpoint := compose.END
+		if target.Type != workflow_enum.End {
+			endpoint, ok := endpoints[target.ID]
+			if !ok {
+				return nodeEndpoint{}, fmt.Errorf("branch target endpoint does not exist: %d", target.ID)
+			}
+			targetEndpoint = endpoint.Entry
+		}
+
+		targetByRule[edgeCfg.BranchRuleID] = targetEndpoint
+		endNodes[targetEndpoint] = true
+	}
+
+	for _, rule := range cfg.Rules {
+		if _, ok := targetByRule[rule.ID]; !ok {
+			return nodeEndpoint{}, fmt.Errorf("branch rule %q has no target", rule.ID)
+		}
+	}
+	if _, ok := targetByRule[branchDefaultRuleID]; !ok {
+		return nodeEndpoint{}, fmt.Errorf("branch default rule has no target")
 	}
 
 	branch := compose.NewGraphBranch(
-		func(
-			ctx context.Context,
-			input string,
-		) (string, error) {
-
-			targetID, ok := cfg.Conditions[input]
+		func(_ context.Context, input string) (string, error) {
+			// evaluator 只返回路由键；Eino 会把未修改的 input 交给选中的下游节点。
+			ruleID := evaluator.Match(input)
+			target, ok := targetByRule[ruleID]
 			if !ok {
-				return compose.END, nil
+				return "", fmt.Errorf("branch rule %q has no target", ruleID)
 			}
-
-			targetNodeID, err := strconv.ParseInt(
-				targetID,
-				10,
-				64,
-			)
-			if err != nil {
-				return "", fmt.Errorf(
-					"非法 Branch 目标节点: %s",
-					targetID,
-				)
-			}
-
-			target, ok := endpoints[targetNodeID]
-			if !ok {
-				return "", fmt.Errorf(
-					"Branch 目标节点不存在: %d",
-					targetNodeID,
-				)
-			}
-
-			return target.Entry, nil
+			return target, nil
 		},
 		endNodes,
 	)
-
 	if err := graph.AddBranch(startNode, branch); err != nil {
 		return nodeEndpoint{}, err
 	}
 
-	return nodeEndpoint{
-		Entry: startNode,
-		Exit:  startNode,
-	}, nil
+	return nodeEndpoint{Entry: startNode, Exit: startNode}, nil
 }
 
 // ---------------------------------------------------------

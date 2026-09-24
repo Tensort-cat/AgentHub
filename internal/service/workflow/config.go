@@ -20,14 +20,29 @@ type ChatTemplateConfig struct {
 	UserPrompt   string `json:"user_prompt"`
 }
 
+// BranchConfig 描述前端 Branch 节点的匹配规则。
+// Rules 的数组顺序就是执行优先级，第一条命中的规则决定唯一的后续路径。
 type BranchConfig struct {
-	Conditions map[string]string
+	Version   int          `json:"version"`
+	TrimSpace bool         `json:"trim_space"`
+	Rules     []BranchRule `json:"rules"`
 }
 
-// type BranchRule struct {
-// 	Value    string `json:"value"`
-// 	TargetID int64  `json:"target_id"`
-// }
+// BranchRule.ID 是规则与 Branch 出边之间的稳定关联键。
+// Label 仅用于界面展示，不参与匹配。
+type BranchRule struct {
+	ID            string `json:"id"`
+	Label         string `json:"label"`
+	Operator      string `json:"operator"`
+	Value         string `json:"value"`
+	CaseSensitive bool   `json:"case_sensitive"`
+}
+
+// BranchEdgeConfig 保存 Branch 规则与目标节点连线的关系。
+// 默认出口使用保留值 "$default"，普通边的 config 仍为 {}。
+type BranchEdgeConfig struct {
+	BranchRuleID string `json:"branch_rule_id"`
+}
 
 type ToolConfig struct {
 	ToolIDs []int64 `json:"tool_ids"`

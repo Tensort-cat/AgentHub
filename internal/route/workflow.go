@@ -24,6 +24,7 @@ func InitWorkflow(api *gin.RouterGroup) {
 
 	// 运行工作流
 	api.POST("/run", controller.Run)
+	api.GET("/run/:task_id/events", controller.WorkflowRunEvents)
 
 	// 节点相关接口
 	nodeGroup := api.Group("/:id/nodes")

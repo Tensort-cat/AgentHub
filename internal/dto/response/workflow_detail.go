@@ -23,7 +23,8 @@ type NodeMetaData struct {
 }
 
 type EdgeMetaData struct {
-	ID           int64
-	SourceNodeID int64
-	TargetNodeID int64
+	ID           int64           `json:"id"`
+	SourceNodeID int64           `json:"source_node_id"`
+	TargetNodeID int64           `json:"target_node_id"`
+	Config       json.RawMessage `json:"config"`
 }

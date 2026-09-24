@@ -5,13 +5,12 @@ import (
 	service "AgentHub/internal/service/workflow"
 	"AgentHub/pkg/constant"
 	"AgentHub/pkg/zlog"
-	"context"
+	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
-
-var ctx = context.Background()
 
 func WorkflowPage(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -105,6 +104,12 @@ func WorkflowDelete(c *gin.Context) {
 
 func Run(c *gin.Context) {
 	var req request.RunReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		zlog.Error(err.Error())
+		JsonBack(c, constant.BadRequest, constant.Error, nil)
+		return
+	}
+
 	userID, exists := c.Get("user_id")
 	if !exists {
 		zlog.Error("不存在参数 user_id")
@@ -115,9 +120,76 @@ func Run(c *gin.Context) {
 	if !ok {
 		zlog.Error("断言失败")
 		JsonBack(c, constant.InternalServerError, constant.Error, nil)
+		return
 	}
-	ret, msg, data := service.Run(ctx, req.WfID, req.Input, id)
+
+	ret, msg, data := service.SubmitRun(c.Request.Context(), req.WfID, req.Input, id)
 	JsonBack(c, ret, msg, data)
+}
+
+func WorkflowRunEvents(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		JsonBack(c, constant.BadRequest, constant.Error, nil)
+		return
+	}
+	id, ok := userID.(int64)
+	if !ok {
+		JsonBack(c, constant.InternalServerError, constant.Error, nil)
+		return
+	}
+
+	taskID := c.Param("task_id")
+	ret, msg, state := service.GetRunState(c.Request.Context(), taskID, id)
+	if ret != constant.Success {
+		JsonBack(c, ret, msg, nil)
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	sendState := func() {
+		c.SSEvent("workflow_run", state)
+		c.Writer.Flush()
+	}
+	sendState()
+	if state.Status.IsTerminal() {
+		return
+	}
+
+	pollTicker := time.NewTicker(time.Second)
+	heartbeatTicker := time.NewTicker(15 * time.Second)
+	defer pollTicker.Stop()
+	defer heartbeatTicker.Stop()
+
+	lastUpdatedAt := state.UpdatedAt
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case <-heartbeatTicker.C:
+			_, _ = c.Writer.WriteString(": ping\n\n")
+			c.Writer.Flush()
+		case <-pollTicker.C:
+			ret, msg, state = service.GetRunState(c.Request.Context(), taskID, id)
+			if ret != constant.Success {
+				c.SSEvent("error", gin.H{"code": ret, "msg": msg})
+				c.Writer.Flush()
+				return
+			}
+			if !state.UpdatedAt.Equal(lastUpdatedAt) {
+				sendState()
+				lastUpdatedAt = state.UpdatedAt
+			}
+			if state.Status.IsTerminal() {
+				return
+			}
+		}
+	}
 }
 
 func NodeCreate(c *gin.Context) {
@@ -173,7 +245,7 @@ func EdgeCreate(c *gin.Context) {
 		JsonBack(c, constant.InternalServerError, constant.Error, nil)
 		return
 	}
-	ret, msg := service.EdgeCreate(int64(wfID), req.SourceNodeID, req.TargetNodeID)
+	ret, msg := service.EdgeCreate(int64(wfID), req.SourceNodeID, req.TargetNodeID, req.Config)
 	JsonBack(c, ret, msg, nil)
 }
 

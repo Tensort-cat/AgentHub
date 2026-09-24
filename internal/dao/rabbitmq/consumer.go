@@ -1,20 +1,19 @@
-﻿package rabbitmq
+package rabbitmq
 
 import (
-	workflowService "AgentHub/internal/service/workflow"
-	"AgentHub/pkg/constant"
 	"AgentHub/pkg/zlog"
 	"context"
 	"encoding/json"
 	"errors"
 	"strconv"
-	"time"
 
 	"go.uber.org/zap"
 )
 
 type WorkflowRunHandler func(ctx context.Context, task WorkflowRunTask) error
+type WorkflowResultHandler func(ctx context.Context, result WorkflowRunResult) error
 
+// 启动消费者
 func StartWorkflowConsumer(ctx context.Context, concurrency int, handler WorkflowRunHandler) error {
 	if RabbitMQConn == nil {
 		return errors.New("rabbitmq connection is nil")
@@ -23,7 +22,7 @@ func StartWorkflowConsumer(ctx context.Context, concurrency int, handler Workflo
 		concurrency = 1
 	}
 	if handler == nil {
-		handler = DefaultWorkflowRunHandler
+		return errors.New("workflow run handler is nil")
 	}
 
 	for i := 0; i < concurrency; i++ {
@@ -33,35 +32,19 @@ func StartWorkflowConsumer(ctx context.Context, concurrency int, handler Workflo
 	return nil
 }
 
-func DefaultWorkflowRunHandler(ctx context.Context, task WorkflowRunTask) error {
-	code, msg, res := workflowService.Run(ctx, task.WorkflowID, task.Input, task.UserID)
-
-	publishResult := WorkflowRunResult{
-		TaskID:     task.TaskID,
-		WorkflowID: task.WorkflowID,
-		UserID:     task.UserID,
-		SessionID:  res.SessionID,
-		Result:     res.Content,
-		Status:     TaskStatusSuccess,
-		FinishedAt: time.Now().UTC(),
+func StartWorkflowResultConsumer(ctx context.Context, handler WorkflowResultHandler) error {
+	if RabbitMQConn == nil {
+		return errors.New("rabbitmq connection is nil")
+	}
+	if handler == nil {
+		return errors.New("workflow result handler is nil")
 	}
 
-	if code != constant.Success {
-		publishResult.Status = TaskStatusFailed
-		publishResult.Error = string(msg)
-	}
-
-	if err := PublishWorkflowResult(publishResult); err != nil {
-		return err
-	}
-
-	if code != constant.Success {
-		return errors.New(string(msg))
-	}
-
+	go consumeWorkflowResultQueue(ctx, handler)
 	return nil
 }
 
+// 消费 Run 任务
 func consumeWorkflowRunQueue(ctx context.Context, index int, handler WorkflowRunHandler) {
 	ch, err := RabbitMQConn.Channel()
 	if err != nil {
@@ -101,7 +84,7 @@ func consumeWorkflowRunQueue(ctx context.Context, index int, handler WorkflowRun
 			var task WorkflowRunTask
 			if err := json.Unmarshal(delivery.Body, &task); err != nil {
 				zlog.Error("unmarshal task failed: "+err.Error(), zap.ByteString("body", delivery.Body))
-				_ = delivery.Nack(false, true)
+				_ = delivery.Nack(false, false)
 				continue
 			}
 
@@ -113,6 +96,62 @@ func consumeWorkflowRunQueue(ctx context.Context, index int, handler WorkflowRun
 
 			if err := delivery.Ack(false); err != nil {
 				zlog.Error("ACK failed: "+err.Error(), zap.String("task_id", task.TaskID))
+			}
+		}
+	}
+}
+
+func consumeWorkflowResultQueue(ctx context.Context, handler WorkflowResultHandler) {
+	ch, err := RabbitMQConn.Channel()
+	if err != nil {
+		zlog.Error("create RabbitMQ result channel failed: " + err.Error())
+		return
+	}
+	defer ch.Close()
+
+	if err := ch.Qos(1, 0, false); err != nil {
+		zlog.Error("set result consumer QoS failed: " + err.Error())
+		return
+	}
+
+	deliveries, err := ch.Consume(
+		QueueWorkflowResult,
+		"workflow_result_consumer",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		zlog.Error("start result consumer failed: " + err.Error())
+		return
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case delivery, ok := <-deliveries:
+			if !ok {
+				return
+			}
+
+			var result WorkflowRunResult
+			if err := json.Unmarshal(delivery.Body, &result); err != nil {
+				zlog.Error("unmarshal workflow result failed: "+err.Error(), zap.ByteString("body", delivery.Body))
+				_ = delivery.Nack(false, false)
+				continue
+			}
+
+			if err := handler(ctx, result); err != nil {
+				zlog.Error("handle workflow result failed: "+err.Error(), zap.String("task_id", result.TaskID))
+				_ = delivery.Nack(false, true)
+				continue
+			}
+
+			if err := delivery.Ack(false); err != nil {
+				zlog.Error("result ACK failed: "+err.Error(), zap.String("task_id", result.TaskID))
 			}
 		}
 	}

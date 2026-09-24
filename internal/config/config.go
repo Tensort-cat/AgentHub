@@ -37,7 +37,7 @@ type RabbitmqConfig struct {
 	Username string `toml:"username"`
 	Password string `toml:"password"`
 	Host     string `toml:"host"`
-	Port     int    `toml:"prot"`
+	Port     int    `toml:"port"`
 }
 
 type EmailConfig struct {

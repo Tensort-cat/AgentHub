@@ -152,3 +152,31 @@
 {"level":"info","ts":"2026-09-04T20:56:22.554+0800","msg":"backend port","port":":8000","func":"main.main","file":"D:/dev_soft/AgentHub/cmd/main.go","line":39}
 {"level":"debug","ts":"2026-09-14T22:26:13.124+0800","msg":"这是测试","func":"test.TestLogger","file":"d:/dev_soft/AgentHub/test/config_test.go","line":19}
 {"level":"debug","ts":"2026-09-14T22:27:03.840+0800","msg":"这是测试","func":"test.TestLogger","file":"d:/dev_soft/AgentHub/test/config_test.go","line":19}
+{"level":"error","ts":"2026-09-23T14:44:09.517+0800","msg":"Failed to connect to MySQL","error":"dial tcp [::1]:3306: connectex: No connection could be made because the target machine actively refused it.","func":"dao.InitMySQL","file":"D:/dev_soft/AgentHub/internal/dao/mysql.go","line":25}
+{"level":"error","ts":"2026-09-23T14:44:09.518+0800","msg":"初始化 MySQL 连接失败","error":"dial tcp [::1]:3306: connectex: No connection could be made because the target machine actively refused it.","func":"main.main","file":"D:/dev_soft/AgentHub/cmd/main.go","line":26}
+{"level":"info","ts":"2026-09-23T14:58:02.182+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"error","ts":"2026-09-23T14:58:02.183+0800","msg":"初始化 rabbitmq 连接失败","error":"dial tcp [::1]:0: connectex: The requested address is not valid in its context.","func":"main.main","file":"D:/dev_soft/AgentHub/cmd/main.go","line":40}
+{"level":"info","ts":"2026-09-23T15:01:10.082+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:01:51.241+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:03:11.649+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:03:23.786+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:04:04.848+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:04:12.101+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:05:16.990+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:10:06.498+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:10:19.142+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T15:10:19.194+0800","msg":"backend port","port":":8000","func":"main.main","file":"D:/dev_soft/AgentHub/cmd/main.go","line":47}
+{"level":"info","ts":"2026-09-23T15:28:06.729+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"d:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"debug","ts":"2026-09-23T17:07:22.623+0800","msg":"这是测试","func":"test.TestLogger","file":"D:/dev_soft/AgentHub/test/config_test.go","line":19}
+{"level":"info","ts":"2026-09-23T17:07:22.688+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T17:07:22.770+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T17:07:22.899+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T17:07:22.921+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T17:07:22.937+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"debug","ts":"2026-09-23T17:11:16.555+0800","msg":"这是测试","func":"test.TestLogger","file":"D:/dev_soft/AgentHub/test/config_test.go","line":19}
+{"level":"info","ts":"2026-09-23T17:11:16.576+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T17:11:16.590+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T17:11:16.708+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T17:11:16.774+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"info","ts":"2026-09-23T17:11:16.786+0800","msg":"Redis 索引已存在，跳过创建","index":"kb_vector_idx","func":"dao.initRedisIndex","file":"D:/dev_soft/AgentHub/internal/dao/redis.go","line":71}
+{"level":"debug","ts":"2026-09-24T16:12:48.178+0800","msg":"这是测试","func":"test.TestLogger","file":"D:/dev_soft/AgentHub/test/config_test.go","line":19}

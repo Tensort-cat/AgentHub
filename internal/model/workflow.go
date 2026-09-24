@@ -37,9 +37,10 @@ func (WorkflowNode) TableName() string {
 type WorkflowEdge struct {
 	BaseModel
 
-	WorkflowID   int64 `gorm:"column:workflow_id;index;not null"`
-	SourceNodeID int64 `gorm:"column:source_node_id;index;not null"`
-	TargetNodeID int64 `gorm:"column:target_node_id;index;not null"`
+	WorkflowID   int64          `gorm:"column:workflow_id;index;not null"`
+	SourceNodeID int64          `gorm:"column:source_node_id;index;not null"`
+	TargetNodeID int64          `gorm:"column:target_node_id;index;not null"`
+	Config       datatypes.JSON `gorm:"column:config;type:json"`
 }
 
 func (WorkflowEdge) TableName() string {

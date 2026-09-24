@@ -99,11 +99,13 @@ func validateEdges(
 
 	// 建立 Node ID 集合
 	nodeIDs := make(map[int64]struct{}, len(nodes))
+	nodeByID := make(map[int64]model.WorkflowNode, len(nodes))
 
 	var startID, endID int64
 
 	for _, node := range nodes {
 		nodeIDs[node.ID] = struct{}{}
+		nodeByID[node.ID] = node
 
 		switch node.Type {
 		case workflow_enum.Start:
@@ -115,7 +117,7 @@ func validateEdges(
 	}
 
 	// 用于检测重复边
-	edgeSet := make(map[[2]int64]struct{}, len(edges))
+	edgeSet := make(map[string]struct{}, len(edges))
 
 	for _, edge := range edges {
 
@@ -170,10 +172,15 @@ func validateEdges(
 			)
 		}
 
-		// 7. 不允许重复边
-		key := [2]int64{
-			edge.SourceNodeID,
-			edge.TargetNodeID,
+		// 7. 普通节点不允许重复 source/target；Branch 还需带上规则 ID。
+		// 这样不同规则可以合法地连接到同一个目标节点。
+		key := fmt.Sprintf("%d:%d", edge.SourceNodeID, edge.TargetNodeID)
+		if nodeByID[edge.SourceNodeID].Type == workflow_enum.Branch {
+			var cfg BranchEdgeConfig
+			if err := decodeNodeConfig(edge.Config, &cfg); err != nil {
+				return fmt.Errorf("branch edge %d config is invalid: %w", edge.ID, err)
+			}
+			key += ":" + cfg.BranchRuleID
 		}
 
 		if _, exists := edgeSet[key]; exists {
@@ -500,23 +507,13 @@ func validateChatTemplateConfig(raw []byte) error {
 }
 
 func validateBranchConfig(raw []byte) error {
-
-	var config map[string]json.RawMessage
-
-	if err := json.Unmarshal(raw, &config); err != nil {
-		return fmt.Errorf(
-			"config 不是合法 JSON: %w",
-			err,
-		)
+	var cfg BranchConfig
+	if err := decodeNodeConfig(raw, &cfg); err != nil {
+		return err
 	}
 
-	if config == nil {
-		return fmt.Errorf(
-			"config 必须是 JSON object",
-		)
-	}
-
-	return nil
+	_, err := newBranchEvaluator(cfg)
+	return err
 }
 
 func validateRetrieverConfig(raw []byte) error {

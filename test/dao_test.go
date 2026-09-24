@@ -3,6 +3,7 @@ package test
 import (
 	"AgentHub/internal/config"
 	"AgentHub/internal/dao"
+	"AgentHub/internal/dao/rabbitmq"
 	"AgentHub/internal/model"
 	workflow_enum "AgentHub/pkg/enum/workflow"
 	"AgentHub/pkg/util"
@@ -110,4 +111,15 @@ func TestHMSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log(ret)
+}
+
+func TestRabbitMQ(t *testing.T) {
+	initEnv()
+
+	cfg := config.Cfg.RabbitmqConfig
+	t.Log(cfg)
+
+	if err := rabbitmq.InitRabbitmq(); err != nil {
+		t.Fatal(err)
+	}
 }
