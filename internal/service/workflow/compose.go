@@ -360,6 +360,7 @@ func newChatModel(
 			Model:       model.Name,
 			Temperature: &cfg.Temperature,
 			MaxTokens:   &cfg.MaxTokens,
+			BaseURL:     model.BaseURL,
 		})
 
 	case model_enum.ModelProviderArk:
@@ -368,6 +369,7 @@ func newChatModel(
 			Model:       model.Name,
 			Temperature: &cfg.Temperature,
 			MaxTokens:   &cfg.MaxTokens,
+			BaseURL:     model.BaseURL,
 		})
 
 	default:

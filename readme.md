@@ -10,6 +10,7 @@ AgentHub 是一个面向开发者的 AI Workflow 平台，目标是让用户能�
 - 启动入口：`cmd/main.go`
 - 配置文件：`configs/config.toml`（参考 `configs/config_tmp.toml` 修改）
 - 运行方式：在项目根目录执行启动命令即可启动后端服务
+- 当前工作流运行采用 RabbitMQ 异步执行，并支持通过 SSE 监听运行状态和最终结果
 
 ## 技术栈
 
@@ -36,15 +37,19 @@ AgentHub 旨在为开发者提供一套可扩展、可编排、可集成的 AI W
 - 基于 Eino Graph 构建工作流执行引擎
 - 将大模型、知识库、工具能力抽象为可组合节点
 - 支持节点编排和图结构管理
+- 通过节点输入/输出适配器统一运行时数据为字符串，便于不同组件串联
 - 运行前校验节点、边和图结构
 - 避免环路、孤立节点、非法连接等问题导致运行时异常
+- 支持 Branch 节点按顺序匹配 `equals`、`contains`、`starts_with`、`ends_with` 和 `regex` 规则
+- Branch 规则通过边的 `branch_rule_id` 与目标节点关联，并提供 `$default` 默认出口
 
-### 2. 并发与异步任务处理
+### 2. 工作流异步执行与状态监听
 
-- 针对文档解析、切片、Embedding、向量写入等耗时操作采用异步任务机制
-- 通过 RabbitMQ 解耦文件上传与知识库索引构建
-- 避免同步处理阻塞 HTTP 请求
-- 提升后台任务吞吐能力和系统稳定性
+- 工作流提交接口仅完成校验和任务入队，不在 HTTP 请求内执行耗时的 LLM 与工具调用
+- RabbitMQ 工作队列通过有限数量的消费者控制工作流并发度
+- 运行状态按 `queued`、`running`、`success`、`failed` 流转
+- `workflow_result_queue` 的消费者将最终结果写入 Redis，并保留 24 小时
+- 前端可通过 SSE 接口持续监听状态，并在任务结束时收到最终输出或错误信息
 
 ### 3. RAG 知识库
 
@@ -95,7 +100,6 @@ AgentHub/
 ├── go.mod               # Go 模块文件
 ├── tables.sql           # 数据库初始化脚本
 ├── readme.md            # 项目说明文档
-└── README.zh.md         # 可按需扩展中文说明（若后续补充）
 ```
 
 ## 快速开始
@@ -122,12 +126,13 @@ copy configs\config_tmp.toml configs\config.toml
 
 - MySQL 连接信息
 - Redis 连接信息
+- RabbitMQ 连接信息
 - 服务端口与 host
 - 日志路径
 - 静态资源路径
 - 邮箱配置（验证码发送使用）
 
-> 当前项目中的配置初始化逻辑会读取固定路径：`D:\dev_soft\AgentHub\configs\config.toml`，因此请务必确保 `config.toml` 位于该路径，或者按需修改配置加载逻辑。
+> 可通过环境变量 `AGENTHUB_CONFIG_PATH` 指定配置文件。未设置时，程序会依次尝试项目下的 `configs/config.toml`、当前目录的 `config.toml` 和开发环境兼容路径。
 
 示例配置结构：
 
@@ -148,6 +153,13 @@ database = "agenthub"
 addr = "ip:port"
 password = ""
 db = 0
+dimension = 2048
+
+[rabbitmqConfig]
+username = "your_username"
+password = "your_password"
+host = "127.0.0.1"
+port = 5672
 
 [logConfig]
 logPath = "./logs/app.log"
@@ -185,16 +197,42 @@ http://localhost:8000
   - 配置文件
   - MySQL 连接
   - Redis 连接
+  - RabbitMQ 连接、工作流任务消费者和结果消费者
   - 路由与 Web 服务
 - 日志默认输出到 `./logs/app.log`
 - 静态文件目录位于 `static/`，包括头像和上传文件
+
+### 异步运行工作流
+
+提交工作流：
+
+```http
+POST /api/v1/workflows/run
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "id": 1,
+  "input": "请总结这份文档"
+}
+```
+
+接口会立即返回 `task_id` 和 `queued` 状态。前端随后通过 SSE 监听该任务：
+
+```http
+GET /api/v1/workflows/run/:task_id/events
+Authorization: Bearer <jwt>
+Accept: text/event-stream
+```
+
+服务端从 Redis 中的最新状态开始推送，后续状态通常为 `queued → running → success/failed`；如果连接建立较晚，可能直接收到 `running` 或最终状态。最终事件包含 `session_id`、`result` 或 `error`。完整字段和事件示例见 [HTTP 接口文档](docs/interface/http.md#57-监听工作流运行状态)。
 
 ## 设计亮点
 
 1. 面向开发者的可编排 Agent 工作流
 2. 可扩展的工具系统与 MCP 集成
 3. 文档知识库的高性能 RAG 方案
-4. 异步任务解耦，提升系统吞吐
+4. RabbitMQ 异步执行、Redis 状态缓存与 SSE 结果回传
 5. 统一认证、日志和异常处理能力
 6. 适合继续扩展为完整的 AI Workflow 平台
 
@@ -203,8 +241,8 @@ http://localhost:8000
 当前项目仍处于持续迭代阶段，后续可进一步完善：
 
 - 前端交互与工作流可视化设计器
-- 节点运行时执行状态管理
-- 更完整的工作流执行监控与任务追踪
+- 节点级运行状态与执行耗时追踪
+- 工作流任务历史、取消、超时和重试策略
 - 更丰富的知识库文档解析与索引能力
 - MCP 工具注册与动态加载机制
 - 更完善的权限体系与多租户支持
@@ -220,15 +258,16 @@ http://localhost:8000
 
 ## **Docker 部署（后端 + MySQL + Redis）**
 
-下面给出一个一键用 Docker Compose 在本地启动整个后端服务（包含 MySQL、Redis）的说明，适合初学者演练。请在推到 GitHub 前确认本仓库已包含 `Dockerfile` 和 `docker-compose.yml`。
+下面给出使用 Docker Compose 启动后端、MySQL 和 Redis 的说明。当前 `docker-compose.yml` 尚未编排 RabbitMQ，因此还需要准备一个后端容器可访问的 RabbitMQ 服务，并在 `configs/config.toml` 中填写连接信息。
 
 **前置条件**
 - 已安装并运行 `Docker Desktop`（包含 `docker compose`）。
 - 本机 8000/3306/6379 端口没有冲突，或你在 `docker-compose.yml` 中修改过映射。
+- 已启动 RabbitMQ，并确保后端运行环境可以访问其 5672 端口。
 
 **关键文件**
 - `Dockerfile`：后端镜像构建脚本。
-- `docker-compose.yml`：编排文件（包含 `mysql`、`redis`、`agenthub` 服务）。
+- `docker-compose.yml`：编排文件（包含 `mysql`、`redis`、`agenthub` 服务，不包含 RabbitMQ）。
 - `configs/config.toml`：服务运行时配置（容器内会读取此文件或通过 `AGENTHUB_CONFIG_PATH` 指定路径）。
 - `tables.sql`：数据库初始化脚本。
 
@@ -238,7 +277,7 @@ http://localhost:8000
 git clone <repo-url> AgentHub
 cd AgentHub
 ```
-2. 可选：检查/修改 `configs/config.toml`，至少确认 MySQL 与 Redis 的地址/密码与 `docker-compose.yml` 中一致（默认 `mysql` 与 `redis` 为容器名）。
+2. 检查/修改 `configs/config.toml`，确认 MySQL、Redis 与外部 RabbitMQ 的地址和凭据均可从后端容器访问。
 3. 构建并启动全部服务：
 ```
 docker compose up --build -d
@@ -279,7 +318,7 @@ docker compose down
 docker compose down -v
 ```
 
-如果你希望我把 `docker-compose.yml` 改为使用 `.env` 管理密码、或把 RabbitMQ 等额外服务加入到编排中，我可以一并帮你更新并测试。 
+> 若希望完全通过 Compose 启动全部依赖，还需要后续将 RabbitMQ 服务加入 `docker-compose.yml`。
 
 ## License
 

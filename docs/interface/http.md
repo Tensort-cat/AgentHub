@@ -32,7 +32,7 @@ Authorization: Bearer <jwt>
 
 ### 1.3 通用返回格式
 
-除文档下载成功时直接返回文件外，接口统一返回 JSON：
+除文档下载成功时直接返回文件、工作流状态监听使用 SSE 外，接口统一返回 JSON：
 
 ```json
 {
@@ -77,10 +77,10 @@ Authorization: Bearer <jwt>
 | --- | --- |
 | `0` | `200 OK` |
 | `1001` | `401 Unauthorized` |
+| `1002` | `403 Forbidden` |
 | `2001` | `400 Bad Request` |
+| `3001` | `404 Not Found` |
 | `4001` | `500 Internal Server Error` |
-
-> `1002` 和 `3001` 已在常量中定义，但当前通用返回函数尚未配置对应的 HTTP 状态映射。
 
 ### 1.5 枚举值
 
@@ -89,6 +89,7 @@ Authorization: Bearer <jwt>
 - 模型类型 `type`：`1` 对话模型，`2` 嵌入模型
 - 模型提供商 `provider`：`1` OpenAI，`2` Ark
 - 工作流状态 `status`：`1` 草稿，`2` 启用
+- 工作流运行状态 `status`：`queued` 排队中、`running` 执行中、`success` 成功、`failed` 失败
 - 工作流节点类型 `type`：`1` 对话模型、`2` 对话模板、`3` 分支、`4` 工具、`5` 检索器、`6` Agent、`7` 开始、`8` 结束
 - 消息类型 `type`：`1` 用户、`2` 助手、`3` 工具、`4` 系统
 - 工具状态 `status`：`1` 禁用、`2` 启用
@@ -432,7 +433,7 @@ GET /api/v1/workflows?page=1&size=10
   "code": 0,
   "msg": "ok",
   "data": {
-    "task_id": "550e8400-e29b-41d4-a716-446655440000",
+    "task_id": "wf-1727143200000000000-1",
     "status": "queued"
   }
 }
@@ -440,7 +441,44 @@ GET /api/v1/workflows?page=1&size=10
 
 > 当前受理成功的 HTTP 状态仍为 `200 OK`。
 
-### 5.7 创建节点
+### 5.7 监听工作流运行状态
+
+- Method: `GET`
+- Path: `/api/v1/workflows/run/:task_id/events`
+- Auth: 是
+- Response Content-Type: `text/event-stream`
+
+`:task_id` 为运行工作流接口返回的任务 ID。连接建立后，服务端会立即发送 Redis 中保存的当前状态；状态发生变化时继续发送事件，并在任务进入 `success` 或 `failed` 后发送最终事件并关闭连接。若任务已开始或结束，首次事件可能直接是 `running`、`success` 或 `failed`，客户端不应假设一定能收到全部中间状态。
+
+事件名称为 `workflow_run`，状态变化示例：
+
+```text
+event: workflow_run
+data: {"task_id":"wf-1727143200000000000-1","status":"queued","updated_at":"2026-09-24T10:00:00Z"}
+
+event: workflow_run
+data: {"task_id":"wf-1727143200000000000-1","status":"running","updated_at":"2026-09-24T10:00:01Z"}
+
+event: workflow_run
+data: {"task_id":"wf-1727143200000000000-1","status":"success","session_id":123,"result":"最终工作流输出","updated_at":"2026-09-24T10:00:08Z"}
+```
+
+执行失败时的最终事件：
+
+```text
+event: workflow_run
+data: {"task_id":"wf-1727143200000000000-1","status":"failed","error":"执行失败原因","updated_at":"2026-09-24T10:00:08Z"}
+```
+
+说明：
+
+- 服务端每 15 秒发送一次 SSE 注释心跳 `: ping`，前端应忽略该行
+- 任务状态与最终结果在 Redis 中保留 24 小时；任务不存在或已过期时返回 `404 Not Found`
+- 只能监听当前登录用户提交的任务，否则返回 `403 Forbidden`
+- 使用 Bearer Token 时，建议通过支持流式读取的 `fetch` 携带 `Authorization` 请求头；浏览器原生 `EventSource` 无法自定义该请求头
+- 连接意外断开后可以使用同一 `task_id` 重新连接，服务端会先返回 Redis 中保存的最新状态
+
+### 5.8 创建节点
 
 - Method: `POST`
 - Path: `/api/v1/workflows/:id/nodes`
@@ -465,9 +503,37 @@ GET /api/v1/workflows?page=1&size=10
 - `name`、`type`、`position_x`、`position_y`：创建节点所需字段
 - `config`：节点配置 JSON，具体内容由节点类型决定
 
+Branch 节点使用版本化规则配置。规则按数组顺序匹配，第一条命中后只执行对应出口：
+
+```json
+{
+  "name": "审核结果分支",
+  "type": 3,
+  "position_x": 400,
+  "position_y": 200,
+  "config": {
+    "version": 1,
+    "trim_space": true,
+    "rules": [
+      {
+        "id": "approved",
+        "label": "已通过",
+        "operator": "equals",
+        "value": "approved",
+        "case_sensitive": false
+      }
+    ]
+  }
+}
+```
+
+- `operator` 支持 `equals`、`contains`、`starts_with`、`ends_with`、`regex`
+- `id` 只能包含字母、数字、下划线和连字符，长度为 1～64；`$default` 为系统保留值
+- 每条规则以及 `$default` 都必须各自关联一条 Branch 出边
+
 成功时 `data` 为 `null`。
 
-### 5.8 更新节点
+### 5.9 更新节点
 
 - Method: `PUT`
 - Path: `/api/v1/workflows/:id/nodes/:node_id`
@@ -490,7 +556,7 @@ GET /api/v1/workflows?page=1&size=10
 
 以上字段均可按需传入，至少需要传入一个可更新字段。成功时 `data` 为 `null`。
 
-### 5.9 删除节点
+### 5.10 删除节点
 
 - Method: `DELETE`
 - Path: `/api/v1/workflows/:id/nodes/:node_id`
@@ -498,7 +564,7 @@ GET /api/v1/workflows?page=1&size=10
 
 成功时 `data` 为 `null`。
 
-### 5.10 创建边
+### 5.11 创建边
 
 - Method: `POST`
 - Path: `/api/v1/workflows/:id/edges`
@@ -520,7 +586,19 @@ GET /api/v1/workflows?page=1&size=10
 
 成功时 `data` 为 `null`。
 
-### 5.11 删除边
+对于 Branch 节点的出边，`config.branch_rule_id` 必须对应 Branch 节点规则的 `id`；默认出口使用保留值 `$default`。普通边使用 `{}`：
+
+```json
+{
+  "source_node_id": 3,
+  "target_node_id": 4,
+  "config": {
+    "branch_rule_id": "approved"
+  }
+}
+```
+
+### 5.12 删除边
 
 - Method: `DELETE`
 - Path: `/api/v1/workflows/:id/edges/:edge_id`
@@ -868,8 +946,9 @@ file=@/path/to/README.md
 1. 先调用登录接口获取包含 `Bearer ` 前缀的 Token。
 2. 后续请求通过 `Authorization` 请求头携带完整 Token。
 3. 除文档上传外，POST 和 PUT 请求统一使用 `application/json`。
-4. 工作流运行接口是异步受理接口；客户端应保存返回的 `task_id`，但当前 HTTP 路由尚未提供任务结果查询接口。
-5. `config` 字段均为 JSON，具体结构需与对应节点或边类型匹配。
+4. 工作流运行接口是异步受理接口；客户端应保存返回的 `task_id`，随后连接 `/api/v1/workflows/run/:task_id/events` 监听状态和最终结果。
+5. SSE 接口需要认证。使用 Bearer Token 的前端应优先采用支持流式读取的 `fetch`，不要直接使用无法设置请求头的原生 `EventSource`。
+6. `config` 字段均为 JSON，具体结构需与对应节点或边类型匹配。
 
 ---
 
