@@ -73,13 +73,13 @@ export default function RegisterPage() {
             <p>Set up a workspace in a few details.</p>
           </header>
           {error ? <div className="form-alert" role="alert">{error}</div> : null}
-          <label className="field"><span>Name</span><input value={form.name} onChange={(event) => update("name", event.target.value)} autoComplete="name" required autoFocus /></label>
-          <label className="field"><span>Email</span><input type="email" value={form.email} onChange={(event) => update("email", event.target.value)} autoComplete="email" required /></label>
-          <label className="field"><span>Password</span><input type="password" value={form.password} onChange={(event) => update("password", event.target.value)} autoComplete="new-password" minLength={6} required /><small>Use at least 6 characters.</small></label>
+          <label className="field"><span>Name</span><input name="name" value={form.name} onChange={(event) => update("name", event.target.value)} autoComplete="name" required autoFocus /></label>
+          <label className="field"><span>Email</span><input name="email" type="email" value={form.email} onChange={(event) => update("email", event.target.value)} autoComplete="email" spellCheck={false} required /></label>
+          <label className="field"><span>Password</span><input name="password" type="password" value={form.password} onChange={(event) => update("password", event.target.value)} autoComplete="new-password" minLength={6} required /><small>Use at least 6 characters.</small></label>
           <label className="field">
             <span>Verification code</span>
             <span className="field-combo">
-              <input value={form.captcha} onChange={(event) => update("captcha", event.target.value)} inputMode="numeric" autoComplete="one-time-code" required />
+              <input name="captcha" value={form.captcha} onChange={(event) => update("captcha", event.target.value)} inputMode="numeric" autoComplete="one-time-code" spellCheck={false} required />
               <button className="button button--secondary" type="button" onClick={requestCode} disabled={sendingCode || cooldown > 0}>
                 {sendingCode ? "Sending…" : cooldown > 0 ? `${cooldown}s` : "Send code"}
               </button>
@@ -96,4 +96,3 @@ export default function RegisterPage() {
     </main>
   );
 }
-

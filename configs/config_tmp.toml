@@ -20,8 +20,8 @@ dimension = 2048
 logPath = "./logs/app.log"
 
 [staticSrcConfig]
-staticAvatarPath = "../static/avatars" # 存储用户头像的路径
-staticFilePath = "../static/files" # 存储用户文件的路径
+staticAvatarPath = "./static/avatars" # 存储用户头像的路径
+staticFilePath = "./static/files" # 存储用户文件的路径
 
 [emailConfig] # 用于发送验证码 (以qq邮箱为例)
 host = "smtp.qq.com"

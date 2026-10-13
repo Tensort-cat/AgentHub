@@ -50,7 +50,10 @@ func isValidModelType(t model_enum.ModelType) bool {
 }
 
 // 创建新模型
-func Create(name, baseUrl, apiKey string, userID int64, modelType model_enum.ModelType) (constant.Code, constant.Msg) {
+func Create(name, baseUrl, apiKey string, userID int64, modelType model_enum.ModelType, provider *model_enum.ModelProvider) (constant.Code, constant.Msg) {
+	if provider == nil || !isValidModelProvider(*provider) {
+		return constant.BadRequest, "provider 必须为 1 (OpenAI) 或 2 (Ark)"
+	}
 	// 不允许有参数为空或不合法
 	if strings.TrimSpace(name) == "" ||
 		strings.TrimSpace(baseUrl) == "" ||
@@ -65,11 +68,12 @@ func Create(name, baseUrl, apiKey string, userID int64, modelType model_enum.Mod
 			ID:        util.GenID(),
 			CreatedAt: time.Now(),
 		},
-		UserID:  userID,
-		Name:    name,
-		BaseURL: baseUrl,
-		APIKey:  apiKey,
-		Type:    modelType,
+		UserID:   userID,
+		Name:     name,
+		BaseURL:  baseUrl,
+		APIKey:   apiKey,
+		Type:     modelType,
+		Provider: *provider,
 	}
 
 	res := dao.DB.Create(&model)
@@ -82,8 +86,14 @@ func Create(name, baseUrl, apiKey string, userID int64, modelType model_enum.Mod
 }
 
 // 更新模型配置 (不允许修改模型类型)
-func Update(modelID string, name, baseUrl, apiKey string) (constant.Code, constant.Msg) {
+func Update(modelID string, name, baseUrl, apiKey string, provider *model_enum.ModelProvider) (constant.Code, constant.Msg) {
 	updateData := make(map[string]any)
+	if provider != nil {
+		if !isValidModelProvider(*provider) {
+			return constant.BadRequest, "provider 必须为 1 (OpenAI) 或 2 (Ark)"
+		}
+		updateData["provider"] = *provider
+	}
 	fields := map[string]string{
 		"name":     name,
 		"base_url": baseUrl,
@@ -102,6 +112,10 @@ func Update(modelID string, name, baseUrl, apiKey string) (constant.Code, consta
 	}
 
 	return constant.Success, constant.Ok
+}
+
+func isValidModelProvider(provider model_enum.ModelProvider) bool {
+	return provider == model_enum.ModelProviderOpenAI || provider == model_enum.ModelProviderArk
 }
 
 // 删除模型配置

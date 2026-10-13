@@ -54,6 +54,7 @@ CREATE TABLE tools (
 
     created_at DATETIME(3) NOT NULL,
     updated_at DATETIME(3) NOT NULL,
+    deleted_at DATETIME(3),
 
     PRIMARY KEY (id),
 

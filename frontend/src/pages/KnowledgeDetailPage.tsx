@@ -19,6 +19,8 @@ const documentStatus = {
   [DocumentStatus.Error]: { label: "Failed", tone: "red" },
 } as const;
 
+// TODO(api): enable document downloads after the route and controller use the same parameter name.
+
 export default function KnowledgeDetailPage() {
   const { knowledgeBaseId = "" } = useParams();
   const queryClient = useQueryClient();
@@ -71,7 +73,7 @@ export default function KnowledgeDetailPage() {
       </header>
       <section className="content-section">
         <div className="section-heading"><div><h2>Documents</h2><p>Markdown files available to retrieval nodes.</p></div><button className="button button--primary" type="button" onClick={() => inputRef.current?.click()} disabled={uploadMutation.isPending}><UploadCloud size={17} aria-hidden="true" />{uploadMutation.isPending ? "Uploading…" : "Upload Markdown"}</button></div>
-        <input ref={inputRef} className="sr-only" type="file" accept=".md,text/markdown" onChange={(event) => { upload(event.target.files?.[0]); event.target.value = ""; }} />
+        <input ref={inputRef} className="sr-only" name="document" type="file" accept=".md,text/markdown" onChange={(event) => { upload(event.target.files?.[0]); event.target.value = ""; }} />
         <div className={`drop-zone ${dragging ? "drop-zone--active" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={drop}>
           <UploadCloud size={22} aria-hidden="true" /><span>Drop a <strong>.md</strong> file here</span><small>One file at a time</small>
         </div>
@@ -88,4 +90,3 @@ export default function KnowledgeDetailPage() {
     </div>
   );
 }
-

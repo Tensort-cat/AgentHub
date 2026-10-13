@@ -54,8 +54,8 @@ function WorkflowFormDialog({
       }
     >
       <form id="workflow-form" className="form-stack" onSubmit={submit}>
-        <label className="field"><span>Name <b aria-hidden="true">*</b></span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required autoFocus /></label>
-        <label className="field"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} placeholder="What does this workflow accomplish?" /></label>
+        <label className="field"><span>Name <b aria-hidden="true">*</b></span><input name="workflow_name" autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required /></label>
+        <label className="field"><span>Description</span><textarea name="workflow_description" autoComplete="off" value={description} onChange={(event) => setDescription(event.target.value)} rows={4} placeholder="Describe what this workflow accomplishes…" /></label>
       </form>
     </Dialog>
   );
@@ -147,4 +147,3 @@ export default function WorkflowsPage() {
     </div>
   );
 }
-

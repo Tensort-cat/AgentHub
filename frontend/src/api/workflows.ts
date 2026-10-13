@@ -126,10 +126,11 @@ export function deleteEdge(workflowId: string, edgeId: string): Promise<null> {
   return apiRequest<null>(`/workflows/${workflowId}/edges/${edgeId}`, { method: "DELETE" });
 }
 
-export async function runWorkflow(workflowId: string, input: string): Promise<WorkflowRunState> {
+export async function runWorkflow(workflowId: string, input: string, signal?: AbortSignal): Promise<WorkflowRunState> {
   const data = await apiRequest<{ task_id: string; status: "queued" }>("/workflows/run", {
     method: "POST",
     json: { id: backendId(workflowId), input },
+    signal,
   });
   return { task_id: data.task_id, status: data.status };
 }

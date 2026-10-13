@@ -54,12 +54,12 @@ export default function LoginPage() {
           {error ? <div className="form-alert" role="alert">{error}</div> : null}
           <label className="field">
             <span>Email</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required autoFocus />
+            <input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" spellCheck={false} required autoFocus />
           </label>
           <label className="field">
             <span>Password</span>
             <span className="input-with-action">
-              <input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={6} required />
+              <input name="password" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={6} required />
               <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>
                 {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
               </button>
@@ -76,4 +76,3 @@ export default function LoginPage() {
     </main>
   );
 }
-

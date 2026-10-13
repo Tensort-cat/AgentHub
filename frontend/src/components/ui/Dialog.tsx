@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 
 interface DialogProps {
@@ -21,6 +21,8 @@ export function Dialog({
   size = "medium",
 }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -33,6 +35,8 @@ export function Dialog({
     <dialog
       ref={ref}
       className={`dialog dialog--${size}`}
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -44,8 +48,8 @@ export function Dialog({
       <div className="dialog__surface">
         <header className="dialog__header">
           <div>
-            <h2>{title}</h2>
-            {description ? <p>{description}</p> : null}
+            <h2 id={titleId}>{title}</h2>
+            {description ? <p id={descriptionId}>{description}</p> : null}
           </div>
           <button className="icon-button icon-button--quiet" type="button" onClick={onClose} aria-label={`Close ${title}`}>
             <X size={18} aria-hidden="true" />
@@ -97,4 +101,3 @@ export function ConfirmDialog({
     </Dialog>
   );
 }
-

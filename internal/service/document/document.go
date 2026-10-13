@@ -1,6 +1,7 @@
 package service
 
 import (
+	"AgentHub/internal/config"
 	"AgentHub/internal/dao"
 	"AgentHub/internal/dto/response"
 	"AgentHub/internal/model"
@@ -56,7 +57,14 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 	// 将文件存储到指定目录
 	kbIDStr := fmt.Sprint(kbID)
 	docIDStr := fmt.Sprint(doc.ID)
-	path := filepath.Join("static", "files", kbIDStr, docIDStr, file.Filename)
+	path := filepath.Join(config.Cfg.StaticSrcConfig.StaticFilePath, kbIDStr, docIDStr, file.Filename)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		zlog.Error("创建文件目录失败", zap.Error(err))
+		if err := UpdateDocStatus(doc.ID, document_enum.Error); err != nil {
+			zlog.Error(err.Error())
+		}
+		return constant.InternalServerError, constant.Error, response.DocUploadResp{}
+	}
 	// 打开上传的文件
 	src, err := file.Open()
 	if err != nil {
@@ -115,14 +123,6 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 			)
 		}
 
-		// 清理本地文件
-		if removeErr := os.RemoveAll(filepath.Dir(path)); removeErr != nil {
-			zlog.Error(
-				"清理本地文件失败",
-				zap.Error(removeErr),
-			)
-		}
-
 		// 更新状态为 Error
 		if err := UpdateDocStatus(doc.ID, document_enum.Error); err != nil {
 			zlog.Error(err.Error())
@@ -147,14 +147,6 @@ func DocUpload(kbID int64, file *multipart.FileHeader) (constant.Code, constant.
 			zlog.Error(
 				"清理 Redis 文档索引失败",
 				zap.Error(cleanupErr),
-			)
-		}
-
-		// 清理本地文件
-		if removeErr := os.RemoveAll(filepath.Dir(path)); removeErr != nil {
-			zlog.Error(
-				"清理本地文件失败",
-				zap.Error(removeErr),
 			)
 		}
 

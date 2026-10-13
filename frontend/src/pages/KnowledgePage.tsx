@@ -44,9 +44,9 @@ function KnowledgeDialog({
   return (
     <Dialog open={open} title="New knowledge base" description="Choose the embedding model used to index and retrieve documents." onClose={onClose} footer={<><button className="button button--secondary" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button button--primary" type="submit" form="knowledge-form" disabled={busy || !name.trim() || !embedderId}>{busy ? "Creating…" : "Create knowledge base"}</button></>}>
       <form id="knowledge-form" className="form-stack" onSubmit={submit}>
-        <label className="field"><span>Name <b aria-hidden="true">*</b></span><input value={name} onChange={(event) => setName(event.target.value)} required autoFocus /></label>
-        <label className="field"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} /></label>
-        <label className="field"><span>Embedding model <b aria-hidden="true">*</b></span><select value={embedderId} onChange={(event) => setEmbedderId(event.target.value)} required><option value="" disabled>Select a model</option>{models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
+        <label className="field"><span>Name <b aria-hidden="true">*</b></span><input name="knowledge_name" autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} required /></label>
+        <label className="field"><span>Description</span><textarea name="knowledge_description" autoComplete="off" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} /></label>
+        <label className="field"><span>Embedding model <b aria-hidden="true">*</b></span><select name="embedder_id" autoComplete="off" value={embedderId} onChange={(event) => setEmbedderId(event.target.value)} required><option value="" disabled>Select a model</option>{models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
       </form>
     </Dialog>
   );
@@ -96,4 +96,3 @@ export default function KnowledgePage() {
     </div>
   );
 }
-

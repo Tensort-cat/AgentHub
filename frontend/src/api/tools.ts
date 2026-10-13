@@ -21,9 +21,9 @@ export async function getTool(id: string): Promise<ToolDetail> {
 }
 
 export function setToolSubscription(id: string, subscribed: boolean): Promise<null> {
+  // TODO(api): hydrate subscription state once the backend exposes a user-tools read endpoint.
   return apiRequest<null>("/user_tools", {
     method: "POST",
     json: { tool_id: backendId(id), status: subscribed ? 2 : 1 },
   });
 }
-

@@ -2,14 +2,15 @@
 
 AgentHub 是一个面向开发者的 AI Workflow 平台，目标是让用户能够通过节点编排的方式构建自定义 Agent 工作流，并结合知识库、外部工具和大模型能力完成复杂任务。
 
-目前本仓库仍处于后端开发阶段，前端界面与完整业务闭环尚未完全落地，核心能力主要集中在后端服务、工作流执行引擎、知识库管理、工具接入和安全认证等方面。
+目前仓库同时包含 Go 后端与 React 前端，后续会为前端部分创建单独的仓库。前端已覆盖认证、工作流管理与可视化编排、模型、知识库、文档、工具和账户页面；项目仍在持续迭代，部分能力会受到当前后端接口完整度的限制。
 
 ## 项目状态
 
-- 当前版本：后端服务为主，未开发完毕
+- 当前版本：Go 后端与 React 前端均已具备可运行实现，仍在持续完善
 - 启动入口：`cmd/main.go`
+- 前端入口：`frontend/src/main.tsx`
 - 配置文件：`configs/config.toml`（参考 `configs/config_tmp.toml` 修改）
-- 运行方式：在项目根目录执行启动命令即可启动后端服务
+- 运行方式：后端在项目根目录启动，前端在 `frontend/` 目录启动
 - 当前工作流运行采用 RabbitMQ 异步执行，并支持通过 SSE 监听运行状态和最终结果
 
 ## 技术栈
@@ -25,6 +26,12 @@ AgentHub 是一个面向开发者的 AI Workflow 平台，目标是让用户能�
 - MCP
 - JWT
 - Zap
+- React 19
+- TypeScript
+- Vite
+- React Flow
+- TanStack Query
+- React Router
 
 ## 项目定位
 
@@ -93,6 +100,10 @@ AgentHub/
 │   ├── route/           # 路由注册
 │   └── service/         # 业务服务层
 ├── pkg/                 # 公共工具包
+├── frontend/            # React + TypeScript Web 前端
+│   ├── src/             # 页面、组件、API Client 与工作流编辑器
+│   ├── .env.example     # 前端环境变量示例
+│   └── package.json     # 前端依赖与脚本
 ├── static/              # 静态资源目录
 ├── logs/                # 日志目录
 ├── docs/                # 项目文档、方案与设计说明
@@ -108,7 +119,9 @@ AgentHub/
 
 请确保本机已安装以下依赖：
 
-- Go 1.25+
+- Go 1.26+
+- Node.js `^20.19.0` 或 `>=22.12.0`
+- npm（随 Node.js 安装）
 - MySQL
 - Redis
 - RabbitMQ
@@ -190,9 +203,50 @@ go build -o agenthub.exe ./cmd
 http://localhost:8000
 ```
 
+### 4. 启动前端
+
+前端位于 `frontend/`，开发模式默认运行在 `http://localhost:5173`，并将 `/api` 请求代理到后端服务。
+
+先确认后端已按上一节启动，然后在新的终端中执行：
+
+```powershell
+cd frontend
+Copy-Item .env.example .env.local
+npm ci
+npm run dev
+```
+
+如果使用 Bash，可将复制命令替换为：
+
+```bash
+cp .env.example .env.local
+```
+
+前端环境变量：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | `/api/v1` | 浏览器请求使用的 API 基础路径 |
+| `VITE_API_TARGET` | `http://localhost:8000` | Vite 开发代理转发到的后端地址 |
+
+如果后端端口或地址不同，请修改 `frontend/.env.local` 中的 `VITE_API_TARGET`。环境变量修改后需要重新启动前端开发服务。
+
+常用前端命令：
+
+```bash
+# TypeScript 类型检查
+npm run typecheck
+
+# 生产构建，产物输出到 frontend/dist/
+npm run build
+```
+
+生产环境默认仍请求 `/api/v1`，因此静态站点所在的 Web Server 需要将 `/api` 反向代理到 AgentHub 后端；也可以在构建前通过 `VITE_API_BASE_URL` 指定实际 API 地址。
+
 ## 运行说明
 
 - 后端服务入口在 `cmd/main.go`
+- 前端开发入口在 `frontend/src/main.tsx`，路由、页面与 API Client 位于 `frontend/src/`
 - 程序启动时会初始化：
   - 配置文件
   - MySQL 连接
@@ -240,7 +294,7 @@ Accept: text/event-stream
 
 当前项目仍处于持续迭代阶段，后续可进一步完善：
 
-- 前端交互与工作流可视化设计器
+- 前端自动化测试、节点级调试信息与更细致的交互完善
 - 节点级运行状态与执行耗时追踪
 - 工作流任务历史、取消、超时和重试策略
 - 更丰富的知识库文档解析与索引能力
@@ -250,7 +304,7 @@ Accept: text/event-stream
 
 ## 备注
 
-本项目当前更偏向后端原型/基础架构实现，适合用于：
+本项目当前包含可运行的后端基础架构和 Web 前端，适合用于：
 
 - 学习 AI Workflow + Agent 平台的工程设计
 - 作为 Go 后端开发练手项目

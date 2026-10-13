@@ -36,6 +36,18 @@ func BuildGraph(
 	edges []my_model.WorkflowEdge,
 	sessionID int64,
 ) (*compose.Graph[string, string], error) {
+	return buildGraph(ctx, nodes, edges, sessionID, func(context.Context) *RuntimeState {
+		return newRuntimeState(sessionID, input)
+	})
+}
+
+func buildGraph(
+	ctx context.Context,
+	nodes []my_model.WorkflowNode,
+	edges []my_model.WorkflowEdge,
+	sessionID int64,
+	genState func(context.Context) *RuntimeState,
+) (*compose.Graph[string, string], error) {
 
 	nodeMap := make(map[int64]my_model.WorkflowNode, len(nodes))
 	endpoints := make(map[int64]nodeEndpoint, len(nodes))
@@ -45,9 +57,7 @@ func BuildGraph(
 	}
 
 	graph := compose.NewGraph[string, string](
-		compose.WithGenLocalState(func(ctx context.Context) *RuntimeState {
-			return newRuntimeState(sessionID, input)
-		}),
+		compose.WithGenLocalState(genState),
 	)
 
 	GetMcpCliManager().Register(sessionID)
@@ -292,6 +302,7 @@ func addChatModelNode(
 			schema.SystemMessage(cfg.SystemPrompt),
 		)
 		msgs = append(msgs, input...)
+		msgs = append(msgs, schema.UserMessage("用户原始输入:"+state.Input)) // 让模型看到原始输入
 
 		return msgs, nil
 	}

@@ -47,7 +47,7 @@ func ModelCreate(ctx *gin.Context) {
 		return
 	}
 
-	ret, msg := service.Create(req.Name, req.BaseUrl, req.ApiKey, id, req.Type)
+	ret, msg := service.Create(req.Name, req.BaseUrl, req.ApiKey, id, req.Type, req.Provider)
 	JsonBack(ctx, ret, msg, nil)
 }
 
@@ -60,7 +60,7 @@ func ModelUpdate(ctx *gin.Context) {
 	}
 
 	modelID := ctx.Param("id")
-	ret, msg := service.Update(modelID, req.Name, req.BaseUrl, req.ApiKey)
+	ret, msg := service.Update(modelID, req.Name, req.BaseUrl, req.ApiKey, req.Provider)
 	JsonBack(ctx, ret, msg, nil)
 }
 

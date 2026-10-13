@@ -13,10 +13,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/cloudwego/eino/compose"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -247,6 +247,8 @@ func isValidNodeType(nodeType workflow_enum.WorkflowNodeType) bool {
 		return true
 	case workflow_enum.ChatTemplate:
 		return true
+	case workflow_enum.Retriever:
+		return true
 	case workflow_enum.Branch:
 		return true
 	case workflow_enum.Tool:
@@ -361,7 +363,7 @@ func Run(
 	// 1. 加载工作流
 	workflow, nodes, edges, err := loadWorkflow(wfID)
 	if err != nil {
-		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
+		return workflowRunFailure(wfID, "加载工作流", err)
 	}
 
 	// 2. 校验工作流
@@ -373,48 +375,41 @@ func Run(
 	session := createSession(wfID, input)
 
 	if err := dao.DB.Create(&session).Error; err != nil {
-		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
+		return workflowRunFailure(wfID, "创建会话", err)
 	}
 
 	// 结束后清理现场
 	defer Sweep(session.ID)
 
 	// 4. 创建 Graph
-	graph, err := BuildGraph(
+	state := newRuntimeState(session.ID, input)
+	graph, err := buildGraph(
 		ctx,
-		input,
 		nodes,
 		edges,
 		session.ID,
+		func(context.Context) *RuntimeState { return state },
 	)
 	if err != nil {
-		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
+		return workflowRunFailure(wfID, "构建工作流", err)
 	}
 
 	// 5. 编译
 	runner, err := graph.Compile(ctx)
 	if err != nil {
-		zlog.Error(err.Error())
-		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
+		return workflowRunFailure(wfID, "编译工作流", err)
 	}
 
 	// 6. 执行
 	result, err := runner.Invoke(ctx, input)
 	if err != nil {
-		zlog.Error(err.Error())
-		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
+		return workflowRunFailure(wfID, "执行工作流", err)
 	}
 
 	// 7. 保存本次运行产生的所有消息
-	err = compose.ProcessState(ctx, func(
-		_ context.Context,
-		state *RuntimeState,
-	) error {
-		return state.SaveMsg2DB()
-	})
+	err = state.SaveMsg2DB()
 	if err != nil {
-		zlog.Error(err.Error())
-		return constant.InternalServerError, constant.Error, response.WorkflowResult{}
+		return workflowRunFailure(wfID, "保存消息", err)
 	}
 
 	// 8. 返回
@@ -422,6 +417,11 @@ func Run(
 		SessionID: session.ID,
 		Content:   result,
 	}
+}
+
+func workflowRunFailure(wfID int64, stage string, err error) (constant.Code, constant.Msg, response.WorkflowResult) {
+	zlog.Error(fmt.Sprintf("workflow %d %s失败: %v", wfID, stage, err))
+	return constant.InternalServerError, constant.Msg(stage + "失败，请查看后端日志"), response.WorkflowResult{}
 }
 
 func ValidateWorkflow(

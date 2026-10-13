@@ -1,11 +1,19 @@
-import { Info } from "lucide-react";
+import { Info, X } from "lucide-react";
 import type { DragEvent } from "react";
 import { nodeDefinitions } from "./node-meta";
 import { WorkflowNodeType } from "../../types/domain";
 
 const categories = ["Input & control", "AI", "Knowledge", "Tools", "Output"] as const;
 
-export function NodePalette({ nodeTypes }: { nodeTypes: Set<WorkflowNodeType> }) {
+export function NodePalette({
+  nodeTypes,
+  onAdd,
+  onClose,
+}: {
+  nodeTypes: Set<WorkflowNodeType>;
+  onAdd: (type: WorkflowNodeType) => void;
+  onClose: () => void;
+}) {
   const drag = (event: DragEvent<HTMLButtonElement>, type: WorkflowNodeType) => {
     event.dataTransfer.setData("application/agenthub-node", String(type));
     event.dataTransfer.effectAllowed = "move";
@@ -13,7 +21,10 @@ export function NodePalette({ nodeTypes }: { nodeTypes: Set<WorkflowNodeType> })
 
   return (
     <aside className="node-palette" aria-label="Node palette">
-      <header><h2>Add nodes</h2><p>Drag a node onto the canvas.</p></header>
+      <header>
+        <div><h2>Add nodes</h2><p>Drag a node, or select one to add it.</p></div>
+        <button className="icon-button icon-button--quiet panel-close" type="button" onClick={onClose} aria-label="Close node palette"><X size={17} aria-hidden="true" /></button>
+      </header>
       <div className="node-palette__scroll">
         {categories.map((category) => (
           <section className="palette-group" key={category}>
@@ -23,7 +34,7 @@ export function NodePalette({ nodeTypes }: { nodeTypes: Set<WorkflowNodeType> })
               const singletonExists = (item.type === WorkflowNodeType.Start || item.type === WorkflowNodeType.End) && nodeTypes.has(item.type);
               const disabled = item.unavailable || singletonExists;
               return (
-                <button key={item.type} className="palette-item" type="button" draggable={!disabled} disabled={disabled} onDragStart={(event) => drag(event, item.type)} title={item.unavailable ? "Agent execution is not implemented by the backend" : singletonExists ? `Only one ${item.label} node is allowed` : `Drag ${item.label} to canvas`}>
+                <button key={item.type} className="palette-item" type="button" draggable={!disabled} disabled={disabled} onClick={() => onAdd(item.type)} onDragStart={(event) => drag(event, item.type)} title={item.unavailable ? "Agent execution is not implemented by the backend" : singletonExists ? `Only one ${item.label} node is allowed` : `Add ${item.label} to canvas`}>
                   <span className={`palette-item__icon palette-item__icon--${item.type}`}><Icon size={16} aria-hidden="true" /></span>
                   <span><strong>{item.label}</strong><small>{item.description}</small></span>
                   {item.unavailable ? <em>Coming soon</em> : item.experimental ? <em>Backend fix needed</em> : null}
@@ -37,4 +48,3 @@ export function NodePalette({ nodeTypes }: { nodeTypes: Set<WorkflowNodeType> })
     </aside>
   );
 }
-

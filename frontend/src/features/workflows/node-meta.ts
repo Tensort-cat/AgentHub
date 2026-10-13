@@ -26,11 +26,12 @@ export const nodeDefinitions: NodeDefinition[] = [
   { type: WorkflowNodeType.Branch, label: "Branch", description: "Route by ordered rules", category: "Input & control", icon: GitBranch },
   { type: WorkflowNodeType.ChatModel, label: "Chat model", description: "Generate with an LLM", category: "AI", icon: MessageSquareText },
   { type: WorkflowNodeType.ChatTemplate, label: "Chat template", description: "Shape the input prompt", category: "AI", icon: Braces },
+  // TODO(backend): enable Agent after workflow execution supports it.
   { type: WorkflowNodeType.Agent, label: "Agent", description: "Tool-calling reasoning loop", category: "AI", icon: Bot, unavailable: true },
+  // TODO(backend): remove the warning after workflow validation accepts Retriever nodes.
   { type: WorkflowNodeType.Retriever, label: "Retriever", description: "Search a knowledge base", category: "Knowledge", icon: Search, experimental: true },
   { type: WorkflowNodeType.Tool, label: "Tools", description: "Expose subscribed tools", category: "Tools", icon: Wrench },
   { type: WorkflowNodeType.End, label: "End", description: "Workflow output", category: "Output", icon: LogOut },
 ];
 
 export const nodeDefinitionByType = new Map(nodeDefinitions.map((definition) => [definition.type, definition]));
-

@@ -47,6 +47,8 @@ import type { AgentHubFlowEdge, AgentHubFlowNode, WorkflowNodeConfig } from "../
 import { ModelType, WorkflowNodeType, WorkflowStatus } from "../types/domain";
 
 const nodeTypes: NodeTypes = { agentHub: WorkflowNode };
+const fitViewOptions = { padding: 0.22 } as const;
+const miniMapNodeColor = (node: AgentHubFlowNode) => node.selected ? "#2f6fed" : "#aeb9c6";
 
 type SaveState = "saved" | "saving" | "failed";
 
@@ -67,15 +69,31 @@ function EditorWorkspace({ workflowId }: { workflowId: string }) {
   const [runOpen, setRunOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(() => !window.matchMedia("(max-width: 1120px)").matches);
   const nodesInitialized = useNodesInitialized();
   const hasFittedRef = useRef(false);
+  const loadedWorkflowRef = useRef<string | null>(null);
+  const paletteToggleRef = useRef<HTMLButtonElement>(null);
+  const inspectorToggleRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!workflowQuery.data) return;
+    if (!workflowQuery.data || workflowQuery.data.id !== workflowId) return;
+    if (loadedWorkflowRef.current !== workflowId) {
+      loadedWorkflowRef.current = workflowId;
+      hasFittedRef.current = false;
+    }
     setNodes(workflowQuery.data.nodes.map(mapBackendNodeToFlowNode));
     setEdges(workflowQuery.data.edges.map(mapBackendEdgeToFlowEdge));
-  }, [workflowQuery.data, setEdges, setNodes]);
+  }, [workflowId, workflowQuery.data, setEdges, setNodes]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1120px)");
+    const update = (event: MediaQueryListEvent) => {
+      if (event.matches) setInspectorOpen(false);
+    };
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     if (!nodesInitialized || nodes.length === 0 || hasFittedRef.current) return;
@@ -178,16 +196,13 @@ function EditorWorkspace({ workflowId }: { workflowId: string }) {
     });
   }, [connectionError, createEdgeMutation, nodeById, notify]);
 
-  const onDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const type = Number(event.dataTransfer.getData("application/agenthub-node")) as WorkflowNodeType;
+  const addNode = useCallback((type: WorkflowNodeType, position: { x: number; y: number }) => {
     const definition = nodeDefinitionByType.get(type);
     if (!definition || definition.unavailable) return;
     if ((type === WorkflowNodeType.Start || type === WorkflowNodeType.End) && nodeTypeSet.has(type)) {
       notify(`Only one ${definition.label} node is allowed.`, "error");
       return;
     }
-    const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
     createNodeMutation.mutate({
       name: definition.label,
       type,
@@ -195,7 +210,65 @@ function EditorWorkspace({ workflowId }: { workflowId: string }) {
       position_y: Math.round(position.y),
       config: defaultNodeConfig(type, { chatModelId, knowledgeBaseId }),
     });
-  }, [chatModelId, createNodeMutation, knowledgeBaseId, nodeTypeSet, notify, screenToFlowPosition]);
+  }, [chatModelId, createNodeMutation, knowledgeBaseId, nodeTypeSet, notify]);
+
+  const onDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const type = Number(event.dataTransfer.getData("application/agenthub-node")) as WorkflowNodeType;
+    addNode(type, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+  }, [addNode, screenToFlowPosition]);
+
+  const onAddNode = useCallback((type: WorkflowNodeType) => {
+    addNode(type, screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+  }, [addNode, screenToFlowPosition]);
+
+  const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onNodeClick = useCallback((_: unknown, node: AgentHubFlowNode) => {
+    setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+    setInspectorOpen(true);
+    if (window.matchMedia("(max-width: 1120px)").matches) setPaletteOpen(false);
+  }, []);
+
+  const onEdgeClick = useCallback((_: unknown, edge: AgentHubFlowEdge) => {
+    setSelectedEdgeId(edge.id);
+    setSelectedNodeId(null);
+  }, []);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const closePalette = useCallback(() => {
+    setPaletteOpen(false);
+    window.requestAnimationFrame(() => paletteToggleRef.current?.focus());
+  }, []);
+
+  const closeInspector = useCallback(() => {
+    setInspectorOpen(false);
+    window.requestAnimationFrame(() => inspectorToggleRef.current?.focus());
+  }, []);
+
+  const togglePalette = useCallback(() => {
+    setPaletteOpen((value) => {
+      const next = !value;
+      if (next && window.matchMedia("(max-width: 1120px)").matches) setInspectorOpen(false);
+      return next;
+    });
+  }, []);
+
+  const toggleInspector = useCallback(() => {
+    setInspectorOpen((value) => {
+      const next = !value;
+      if (next && window.matchMedia("(max-width: 1120px)").matches) setPaletteOpen(false);
+      return next;
+    });
+  }, []);
 
   const onNodeDragStop: OnNodeDrag<AgentHubFlowNode> = useCallback((_, node) => {
     updateNodeMutation.mutate({ id: node.id, type: node.data.nodeType, input: { position_x: Math.round(node.position.x), position_y: Math.round(node.position.y) } });
@@ -207,18 +280,19 @@ function EditorWorkspace({ workflowId }: { workflowId: string }) {
   const workflow = workflowQuery.data;
   return (
     <main className={`workflow-editor ${paletteOpen ? "workflow-editor--palette-open" : ""} ${inspectorOpen ? "workflow-editor--inspector-open" : ""}`}>
+      <a className="skip-link" href="#workflow-canvas">Skip to workflow canvas</a>
       <header className="editor-header">
         <div className="editor-header__identity"><Link className="icon-button icon-button--quiet" to="/workflows" aria-label="Back to workflows"><ArrowLeft size={18} aria-hidden="true" /></Link><span className="editor-wordmark"><span className="brand-mark brand-mark--small" aria-hidden="true"><i /><i /><i /></span>AgentHub</span><span className="editor-divider" /><div><h1>{workflow.name}</h1><p>{workflow.description || "No description"}</p></div></div>
         <div className="editor-header__actions">
-          <span className={`save-state save-state--${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "failed" ? "Save failed" : "Saved"}</span>
-          <button className="status-button" type="button" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate(workflowStatus === WorkflowStatus.Active ? WorkflowStatus.Draft : WorkflowStatus.Active)} title="Change workflow status"><Badge tone={workflowStatus === WorkflowStatus.Active ? "green" : "neutral"}>{workflowStatus === WorkflowStatus.Active ? "Enabled" : "Draft"}</Badge></button>
+          <span className={`save-state save-state--${saveState}`} role="status" aria-live="polite">{saveState === "saving" ? "Saving…" : saveState === "failed" ? "Save failed" : "Saved"}</span>
+          <button className="status-button" type="button" disabled={statusMutation.isPending} onClick={() => statusMutation.mutate(workflowStatus === WorkflowStatus.Active ? WorkflowStatus.Draft : WorkflowStatus.Active)} aria-label={workflowStatus === WorkflowStatus.Active ? "Disable workflow" : "Enable workflow"} aria-pressed={workflowStatus === WorkflowStatus.Active} title={workflowStatus === WorkflowStatus.Active ? "Disable workflow" : "Enable workflow"}><Badge tone={workflowStatus === WorkflowStatus.Active ? "green" : "neutral"}>{workflowStatus === WorkflowStatus.Active ? "Enabled" : "Draft"}</Badge></button>
           <button className="button button--secondary editor-history-button" type="button" onClick={() => setHistoryOpen(true)}><Clock3 size={16} aria-hidden="true" />History</button>
           <button className="button button--primary" type="button" onClick={() => setRunOpen(true)}><Play size={16} fill="currentColor" aria-hidden="true" />Run</button>
         </div>
       </header>
       <div className="editor-body">
-        {paletteOpen ? <NodePalette nodeTypes={nodeTypeSet} /> : null}
-        <section className="flow-canvas" aria-label="Workflow canvas" onDrop={onDrop} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}>
+        {paletteOpen ? <NodePalette nodeTypes={nodeTypeSet} onAdd={onAddNode} onClose={closePalette} /> : null}
+        <section className="flow-canvas" id="workflow-canvas" tabIndex={-1} aria-label="Workflow canvas" onDrop={onDrop} onDragOver={onDragOver}>
           <ReactFlow<AgentHubFlowNode, AgentHubFlowEdge>
             nodes={nodes}
             edges={edges}
@@ -227,25 +301,25 @@ function EditorWorkspace({ workflowId }: { workflowId: string }) {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeDragStop={onNodeDragStop}
-            onNodeClick={(_, node) => { setSelectedNodeId(node.id); setSelectedEdgeId(null); setInspectorOpen(true); }}
-            onEdgeClick={(_, edge) => { setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
-            onPaneClick={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+            onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={onPaneClick}
             isValidConnection={(connection) => !connectionError(connection)}
             deleteKeyCode={null}
             fitView
-            fitViewOptions={{ padding: 0.22 }}
+            fitViewOptions={fitViewOptions}
             minZoom={0.25}
             maxZoom={1.8}
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd3dd" />
             <Controls showInteractive={false} />
-            <MiniMap pannable zoomable nodeStrokeWidth={3} nodeColor={(node) => node.selected ? "#2f6fed" : "#aeb9c6"} maskColor="rgba(241, 244, 247, .74)" />
-            <Panel position="top-left" className="canvas-panel-buttons"><button className="icon-button canvas-panel-toggle" type="button" onClick={() => setPaletteOpen((value) => !value)} aria-label={paletteOpen ? "Hide node palette" : "Show node palette"} title={paletteOpen ? "Hide node palette" : "Show node palette"}><PanelLeftClose size={17} aria-hidden="true" /></button></Panel>
-            <Panel position="top-right" className="canvas-panel-buttons"><button className="icon-button canvas-panel-toggle" type="button" onClick={() => setInspectorOpen((value) => !value)} aria-label={inspectorOpen ? "Hide inspector" : "Show inspector"} title={inspectorOpen ? "Hide inspector" : "Show inspector"}><PanelRightClose size={17} aria-hidden="true" /></button></Panel>
+            <MiniMap pannable zoomable nodeStrokeWidth={3} nodeColor={miniMapNodeColor} maskColor="rgba(241, 244, 247, .74)" />
+            <Panel position="top-left" className="canvas-panel-buttons"><button ref={paletteToggleRef} className="icon-button canvas-panel-toggle" type="button" onClick={togglePalette} aria-label={paletteOpen ? "Hide node palette" : "Show node palette"} aria-expanded={paletteOpen} title={paletteOpen ? "Hide node palette" : "Show node palette"}><PanelLeftClose size={17} aria-hidden="true" /></button></Panel>
+            <Panel position="top-right" className="canvas-panel-buttons"><button ref={inspectorToggleRef} className="icon-button canvas-panel-toggle" type="button" onClick={toggleInspector} aria-label={inspectorOpen ? "Hide inspector" : "Show inspector"} aria-expanded={inspectorOpen} title={inspectorOpen ? "Hide inspector" : "Show inspector"}><PanelRightClose size={17} aria-hidden="true" /></button></Panel>
             {selectedEdgeId ? <Panel position="bottom-center" className="edge-action-panel"><span>Connection selected</span><button className="button button--danger-quiet" type="button" onClick={() => deleteEdgeMutation.mutate(selectedEdgeId)} disabled={deleteEdgeMutation.isPending}><Trash2 size={15} aria-hidden="true" />Delete connection</button></Panel> : null}
           </ReactFlow>
         </section>
-        {inspectorOpen ? <NodeInspector key={selectedNode?.id ?? "workflow"} node={selectedNode} workflow={{ name: workflow.name, description: workflow.description, nodeCount: nodes.length, edgeCount: edges.length }} models={modelsQuery.data ?? []} knowledgeBases={knowledgeQuery.data ?? []} tools={toolsQuery.data ?? []} connectedRuleIds={connectedRuleIds} saving={updateNodeMutation.isPending || deleteNodeMutation.isPending} onSave={(input) => selectedNode && updateNodeMutation.mutate({ id: selectedNode.id, type: selectedNode.data.nodeType, input })} onDelete={() => selectedNode && deleteNodeMutation.mutate(selectedNode.id)} /> : null}
+        {inspectorOpen ? <NodeInspector key={selectedNode?.id ?? "workflow"} node={selectedNode} workflow={{ name: workflow.name, description: workflow.description, nodeCount: nodes.length, edgeCount: edges.length }} models={modelsQuery.data ?? []} knowledgeBases={knowledgeQuery.data ?? []} tools={toolsQuery.data ?? []} connectedRuleIds={connectedRuleIds} saving={updateNodeMutation.isPending || deleteNodeMutation.isPending} onClose={closeInspector} onSave={(input) => selectedNode && updateNodeMutation.mutate({ id: selectedNode.id, type: selectedNode.data.nodeType, input })} onDelete={() => selectedNode && deleteNodeMutation.mutate(selectedNode.id)} /> : null}
       </div>
       <RunPanel open={runOpen} workflowId={workflowId} onClose={() => setRunOpen(false)} onComplete={() => void queryClient.invalidateQueries({ queryKey: ["sessions", workflowId] })} />
       <HistoryPanel open={historyOpen} workflowId={workflowId} onClose={() => setHistoryOpen(false)} />
